@@ -30,6 +30,7 @@ impl VirtualKeyboardMatrix {
         // Loop through the event matrix and store a map from event -> index.
         let dim = (keys.len(), keys[0].len());
         let mut hash = HashMap::new();
+        let v = 123;
         for r in 0..dim.0 {
             for c in 0..dim.1 {
                 match &keys[r][c] {

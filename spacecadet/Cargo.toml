@@ -1,0 +1,7 @@
+[package]
+name = "spacecadet"
+version = "0.1.0"
+authors = ["Andrew Hardin <andrew.hardin5+git@gmail.com>"]
+edition = "2018"
+
+[dependencies]

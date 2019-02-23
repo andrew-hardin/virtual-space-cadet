@@ -1,0 +1,11 @@
+[package]
+name = "libspacecadet"
+version = "0.1.0"
+authors = ["Andrew Hardin <andrew.hardin5+git@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+uinput = "0.1.3"
+evdev-rs = {path = "/home/andrew/Desktop/evdev-rs"}
+libc = "0.2.48"
+enum_derive = "0.1.7"
