@@ -5,3 +5,4 @@ authors = ["Andrew Hardin <andrew.hardin5+git@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+libspacecadet = {path = "../libspacecadet"}
