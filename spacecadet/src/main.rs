@@ -25,7 +25,7 @@ fn cyclic_executor<F>(action: &mut F) where F: FnMut() {
             std::thread::sleep(remaining_time);
         } else if !warned {
             println!("Event loop executing slower than {}hz.", EVENT_LOOP_HZ_RATE);
-            warned = false;
+            warned = true;
         }
     }
 }
