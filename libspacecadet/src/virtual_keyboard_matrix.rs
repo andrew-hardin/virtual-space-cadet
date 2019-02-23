@@ -1,17 +1,26 @@
 use evdev_rs as evdev;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::keys;
 
 
 pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
-type StateMatrix = Vec<Vec<bool>>;
 type Index2D = (usize, usize);
 
+pub enum KeyStateChange {
+    Pressed,
+    Released
+}
 
 pub struct VirtualKeyboardMatrix {
     key_to_index: HashMap<evdev::enums::EV_KEY, Index2D>,
     dim: Index2D,
-    state: StateMatrix,
+    state: StateMatrix
+}
+
+pub struct UpdateResult {
+    pub within_matrix: bool,
+    pub state_change: Option<KeyStateChange>
 }
 
 impl VirtualKeyboardMatrix {
@@ -32,19 +41,25 @@ impl VirtualKeyboardMatrix {
             }
         }
 
-        // Initialize the state matrix such that no key is pressed.
-        let initial_state = vec![vec![false; dim.1]; dim.0];
-
         VirtualKeyboardMatrix {
             key_to_index: hash,
             dim: dim,
-            state: initial_state
+            state: StateMatrix::new(dim)
         }
     }
 
     // Update the matrix state by processing a single event.
     // Returns a bool indicating if the event was in the matrix.
-    pub fn update(&mut self, event: evdev::InputEvent) -> bool {
+    pub fn update(&mut self, event: evdev::InputEvent) -> UpdateResult {
+
+        // Convert the event time into a friendly representation.
+        use std::time::{Duration, UNIX_EPOCH};
+        let now = UNIX_EPOCH +
+            Duration::new(event.time.tv_sec as u64, event.time.tv_usec as u32 * 1000);
+
+        // Filter based on the event code.
+        // We only support EV_KEY events than are also in our matrix.
+        // (That's why there's a nested match expression).
         match event.event_code {
             evdev::enums::EventCode::EV_KEY(which) => {
                 let location = self.key_to_index.get(&which);
@@ -53,17 +68,61 @@ impl VirtualKeyboardMatrix {
                         // Great, the key corresponds to an index.
                         // Code the state is either pressed or not, then return true because
                         // the key was mapped to a matrix position.
-                        self.state[index.0][index.1] = match event.value {
+                        let val = match event.value {
                             0 => false,
                             _ => true
                         };
-                        true
+                        return UpdateResult {
+                            within_matrix: true,
+                            state_change: self.state.set(*index, val, now)
+                        }
                     }
-                    None => false
+                    // Keys that aren't part of the matrix aren't handled.
+                    None => {}
                 }
             }
-            // Any other event code isn't handled (i.e. we're only working with keys).
-            _ => false
+            // Non key event codes aren't handled.
+            _ => {}
+        }
+
+        // Return a pure bypass result (i.e. key wasn't in our matrix).
+        UpdateResult {
+            within_matrix: false,
+            state_change: None
+        }
+    }
+}
+
+struct StateMatrix {
+    state: Vec<Vec<bool>>,
+    last_pressed: Vec<Vec<SystemTime>>,
+    dim: Index2D
+}
+
+impl StateMatrix {
+    pub fn new(dim: Index2D) -> StateMatrix {
+        // Initialize our state with every key unpressed.
+        StateMatrix {
+            state: vec![vec![false; dim.1]; dim.0],
+            last_pressed: vec![vec![UNIX_EPOCH; dim.1]; dim.0],
+            dim
+        }
+    }
+
+    pub fn set(&mut self, dim: Index2D, is_pressed: bool, now: SystemTime) -> Option<KeyStateChange> {
+        let old_state = self.state[dim.0][dim.1];
+        let new_state = is_pressed;
+        self.state[dim.0][dim.1] = new_state;
+        if old_state != new_state {
+            if old_state {
+                Some(KeyStateChange::Released)
+            } else {
+                // Before returning, record the time that the key was pressed.
+                self.last_pressed[dim.0][dim.1] = now;
+                Some(KeyStateChange::Pressed)
+            }
+        } else {
+            None
         }
     }
 
