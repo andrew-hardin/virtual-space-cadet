@@ -5,8 +5,9 @@ use crate::keys;
 
 
 pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
-type Index2D = (usize, usize);
+pub type Index2D = (usize, usize);
 
+#[derive(Clone, Copy)]
 pub enum KeyStateChange {
     Pressed,
     Released
@@ -19,8 +20,8 @@ pub struct VirtualKeyboardMatrix {
 }
 
 pub struct UpdateResult {
-    pub within_matrix: bool,
-    pub state_change: Option<KeyStateChange>
+    pub state_change: Option<KeyStateChange>,
+    pub location: Index2D,
 }
 
 impl VirtualKeyboardMatrix {
@@ -50,7 +51,7 @@ impl VirtualKeyboardMatrix {
 
     // Update the matrix state by processing a single event.
     // Returns a bool indicating if the event was in the matrix.
-    pub fn update(&mut self, event: evdev::InputEvent) -> UpdateResult {
+    pub fn update(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
 
         // Convert the event time into a friendly representation.
         use std::time::{Duration, UNIX_EPOCH};
@@ -72,23 +73,17 @@ impl VirtualKeyboardMatrix {
                             0 => false,
                             _ => true
                         };
-                        return UpdateResult {
-                            within_matrix: true,
-                            state_change: self.state.set(*index, val, now)
-                        }
+                        Some(UpdateResult {
+                            state_change: self.state.set(*index, val, now),
+                            location: *index,
+                        })
                     }
                     // Keys that aren't part of the matrix aren't handled.
-                    None => {}
+                    None => None
                 }
             }
             // Non key event codes aren't handled.
-            _ => {}
-        }
-
-        // Return a pure bypass result (i.e. key wasn't in our matrix).
-        UpdateResult {
-            within_matrix: false,
-            state_change: None
+            _ => None
         }
     }
 }

@@ -7,6 +7,9 @@ pub use keyboard_driver::*;
 mod keys;
 pub use keys::*;
 
+mod layer;
+pub use layer::*;
+
 mod output_keyboard;
 pub use output_keyboard::OutputKeyboard;
 

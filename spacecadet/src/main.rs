@@ -13,6 +13,20 @@ fn get_keypad_matrix() -> KeyMatrix {
     ]
 }
 
+fn base_layer_keys() -> KeyCodeMatrix {
+    let mut ans = KeyCodeMatrix::new((4,3));
+    ans.codes[3][0] = Box::new(KEY::KEY_A);
+    ans
+}
+
+fn base_layer() -> Layer {
+    Layer {
+        name: "base".to_string(),
+        enabled: true,
+        codes: base_layer_keys(),
+    }
+}
+
 fn cyclic_executor<F>(action: &mut F) where F: FnMut() {
     let mut warned = false;
     loop {
@@ -39,8 +53,12 @@ fn main() {
     let mut keyboard = KeyboardDriver {
         input: InputKeyboard::open("/dev/input/event4"),
         output: OutputKeyboard::new(),
-        matrix: VirtualKeyboardMatrix::new(get_keypad_matrix())
+        matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
+        layers: Vec::new()
     };
+    keyboard.init();
+
+    keyboard.layers.push(base_layer());
 
     let mut update = || tick(&mut keyboard);
     cyclic_executor(&mut update);
