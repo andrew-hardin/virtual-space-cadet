@@ -44,22 +44,25 @@ fn cyclic_executor<F>(action: &mut F) where F: FnMut() {
     }
 }
 
-fn tick(d: &mut KeyboardDriver) {
+fn tick(d: &mut LayeredKeyboardDriver) {
     d.clock_tick();
 }
 
 fn main() {
 
-    let mut keyboard = KeyboardDriver {
+    let keyboard = KeyboardDriver {
         input: InputKeyboard::open("/dev/input/event4"),
         output: OutputKeyboard::new(),
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
+    };
+
+    let mut f = LayeredKeyboardDriver {
+        driver: keyboard,
         layers: Vec::new()
     };
-    keyboard.init();
 
-    keyboard.layers.push(base_layer());
+    f.layers.push(base_layer());
 
-    let mut update = || tick(&mut keyboard);
+    let mut update = || tick(&mut f);
     cyclic_executor(&mut update);
 }
