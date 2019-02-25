@@ -30,8 +30,9 @@ impl KeyCode for KEY {
             event_type : evdev::enums::EventType::EV_KEY,
             event_code : evdev::enums::EventCode::EV_KEY(self.clone()),
             value: match state {
+                KeyStateChange::Held => 2,
                 KeyStateChange::Pressed => 1,
-                KeyStateChange::Released => 0
+                KeyStateChange::Released => 0,
             }
         };
         driver.output.send(v);

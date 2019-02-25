@@ -1,6 +1,6 @@
 use evdev_rs as evdev;
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::keys;
 
 
@@ -10,7 +10,8 @@ pub type Index2D = (usize, usize);
 #[derive(Clone, Copy)]
 pub enum KeyStateChange {
     Pressed,
-    Released
+    Released,
+    Held
 }
 
 pub struct VirtualKeyboardMatrix {
@@ -54,7 +55,6 @@ impl VirtualKeyboardMatrix {
     pub fn update(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
 
         // Convert the event time into a friendly representation.
-        use std::time::{Duration, UNIX_EPOCH};
         let now = UNIX_EPOCH +
             Duration::new(event.time.tv_sec as u64, event.time.tv_usec as u32 * 1000);
 
@@ -85,6 +85,26 @@ impl VirtualKeyboardMatrix {
             // Non key event codes aren't handled.
             _ => None
         }
+    }
+
+    pub fn detect_held_keys(&mut self, held_key_threshold: Duration) -> Vec<UpdateResult> {
+        // Loop through every cell in the matrix and detect keys that
+        // have been held for longer than the given threshold.
+        let mut ans = Vec::new();
+        let now = SystemTime::now();
+        for r in 0..self.dim.0 {
+            for c in 0..self.dim.1 {
+                let idx = (r, c);
+                if self.state.is_held(idx, held_key_threshold, now) {
+                    ans.push(UpdateResult {
+                        state_change: Some(KeyStateChange::Held),
+                        location: idx,
+                    });
+                    self.state.reset_key_press_time(idx,now);
+                }
+            }
+        }
+        ans
     }
 }
 
@@ -136,5 +156,15 @@ impl StateMatrix {
                 }
             }
         }
+    }
+
+    pub fn is_held(&self, idx: Index2D, hold_threshold: Duration, now: SystemTime) -> bool {
+        let is_pressed = self.state[idx.0][idx.1];
+        let held_long_enough = self.last_pressed[idx.0][idx.1] + hold_threshold <= now;
+        is_pressed && held_long_enough
+    }
+
+    pub fn reset_key_press_time(&mut self, idx: Index2D, when: SystemTime) {
+        self.last_pressed[idx.0][idx.1] = when;
     }
 }

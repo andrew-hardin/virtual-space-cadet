@@ -24,7 +24,7 @@ impl OutputKeyboard {
         // evdev event -> uinput event -> device command.
         let code = e.value;
         let e = self.evdev_to_uinput.convert(e).unwrap();
-        println!("sending {:?}", e);
+        println!("sending {:?} (val = {})", e, code);
         self.device.send(e, code).unwrap();
         self.device.synchronize().unwrap();
     }

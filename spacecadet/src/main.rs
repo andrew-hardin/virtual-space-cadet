@@ -1,7 +1,7 @@
 use std::time;
 use libspacecadet::*;
 
-const EVENT_LOOP_HZ_RATE: u64 = 100;
+const EVENT_LOOP_HZ_RATE: u64 = 200;
 const EVENT_LOOP_RATE: time::Duration = time::Duration::from_millis(1000 / EVENT_LOOP_HZ_RATE);
 
 fn get_keypad_matrix() -> KeyMatrix {
