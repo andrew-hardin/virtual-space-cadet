@@ -21,6 +21,7 @@ fn base_layer_keys() -> KeyCodeMatrix {
     ans.codes[0][1] = Box::new(MomentarilyEnableLayerKey {
         layer_name: "second".to_string()
     });
+    ans.codes[0][2] = Box::new(HoldEnableLayerPressKey::new("second", KEY::KEY_A));
     ans.codes[3][0] = Box::new(KEY::KEY_A);
     ans.codes[3][1] = Box::new(MacroKey {
         play_macro_when: KeyStateChange::Released,

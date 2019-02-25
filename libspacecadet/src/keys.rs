@@ -4,13 +4,14 @@ use crate::virtual_keyboard_matrix::KeyStateChange;
 use crate::keyboard_driver::KeyboardDriver;
 
 pub use evdev::enums::EV_KEY as KEY;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 
 // A key code is our primary interface for keys.
 pub trait KeyCode {
 
     // Handle a state change event for this key.
-    fn handle_event(&self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection) { }
+    fn handle_event(&mut self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection) { }
 
     // Is the key transparent (i.e. that when stacking layers, the key is a pass-through
     // to the key below it.
@@ -23,7 +24,7 @@ impl KeyCode for BlankKey {
 }
 
 impl KeyCode for KEY {
-    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection) {
         let v = evdev::InputEvent {
             time: evdev::TimeVal {
                 tv_usec: 0,
@@ -47,9 +48,9 @@ pub struct MacroKey {
 }
 
 impl KeyCode for MacroKey {
-    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
         if state == self.play_macro_when {
-            for i in self.keys.iter() {
+            for i in self.keys.iter_mut() {
                 i.handle_event(driver, KeyStateChange::Pressed, l);
                 i.handle_event(driver, KeyStateChange::Released, l);
             }
@@ -63,7 +64,7 @@ pub struct ToggleLayerKey {
 }
 
 impl KeyCode for ToggleLayerKey {
-    fn handle_event(&self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
         if state == KeyStateChange::Released {
             l.toggle(&self.layer_name);
         }
@@ -78,7 +79,7 @@ pub struct MomentarilyEnableLayerKey {
 }
 
 impl KeyCode for MomentarilyEnableLayerKey {
-    fn handle_event(&self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
         match state {
             KeyStateChange::Held =>  { }
             KeyStateChange::Released => { l.set(&self.layer_name, false); }
@@ -93,10 +94,56 @@ pub struct EnableLayerKey {
 }
 
 impl KeyCode for EnableLayerKey {
-    fn handle_event(&self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
         match state {
             KeyStateChange::Pressed => { l.set(&self.layer_name, true); }
             _ => {}
         }
+    }
+}
+
+// Imitating LT.
+pub struct HoldEnableLayerPressKey {
+    layer_name: String,
+    key: KEY,
+    pressed_at: SystemTime,
+}
+
+impl HoldEnableLayerPressKey {
+    pub fn new(layer_name: &str, key: KEY) -> HoldEnableLayerPressKey {
+        HoldEnableLayerPressKey {
+            layer_name: layer_name.to_string(),
+            key,
+            pressed_at: UNIX_EPOCH
+        }
+    }
+}
+
+impl KeyCode for HoldEnableLayerPressKey {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+        match state {
+            KeyStateChange::Held => {
+                /*
+                TODO: Should we toggle the layer if it's been held long enough, but it hasn't yet been released?
+                      Wouldn't that cause the release event to be processed on a different layer?
+                      Maybe a shadow sink would gobble up the release event from this position?
+                */
+            }
+            KeyStateChange::Pressed => {
+                self.pressed_at = driver.now();
+            }
+            KeyStateChange::Released => {
+                let delta = driver.now().duration_since(self.pressed_at).unwrap();
+                // TODO: extract hold duration parameter...
+                let was_held = delta > Duration::from_millis(200);
+                if was_held {
+                    l.set(&self.layer_name, true);
+                } else {
+                    self.key.handle_event(driver, KeyStateChange::Pressed, l);
+                    self.key.handle_event(driver, KeyStateChange::Released, l);
+                }
+            }
+        }
+
     }
 }

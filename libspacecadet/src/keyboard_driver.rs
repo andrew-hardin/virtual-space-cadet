@@ -2,12 +2,19 @@ use crate::input_keyboard::*;
 use crate::output_keyboard::*;
 use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 pub struct KeyboardDriver {
     pub input: InputKeyboard,
     pub output: OutputKeyboard,
     pub matrix: VirtualKeyboardMatrix,
+}
+
+impl KeyboardDriver {
+    pub fn now(&self) -> SystemTime {
+        // TODO: cache the time once per tick, then remove all references to SystemTime::now().
+        SystemTime::now()
+    }
 }
 
 pub struct LayeredKeyboardDriver {
@@ -55,23 +62,18 @@ impl LayeredKeyboardDriver {
 
         // Starting at the highest enabled layer, find the first key that's
         // not transparent.
-        let mut key = None;
-        for i in (0..self.layered_codes.len()).rev() {
+        let l = self.layered_codes.len();
+        for i in (0..l).rev() {
             if self.layer_attributes.is_enabled(i) {
-                let code = &self.layered_codes[i].codes[idx.0][idx.1];
+                let code = &mut self.layered_codes[i].codes[idx.0][idx.1];
                 if !code.is_transparent() {
                     println!("Found key on layer {}", i);
-                    key = Some(code);
-                    break;
+                    code.handle_event(&mut self.driver, state, &mut self.layer_attributes);
+                    return;
                 }
             }
         }
-
-        // If we reached a key, ask it to interpret the state change event.
-        match key {
-            Some(t) => t.handle_event(&mut self.driver, state, &mut self.layer_attributes),
-            None => { println!("Reached bottom of stack without hitting a key."); }
-        }
+        println!("Reached bottom of stack without hitting a key.");
     }
 }
 

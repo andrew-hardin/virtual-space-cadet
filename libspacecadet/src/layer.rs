@@ -63,6 +63,7 @@ impl LayerCollection {
     }
 
     pub fn set(&mut self, name: &str, val: bool) {
+        println!("Setting layer {} to {}", name, val);
         self.attributes[self.name_to_idx[name]].enabled = val;
     }
 }
