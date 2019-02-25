@@ -15,20 +15,21 @@ fn get_keypad_matrix() -> KeyMatrix {
 
 fn base_layer_keys() -> KeyCodeMatrix {
     let mut ans = KeyCodeMatrix::new((4,3));
+    ans.codes[0][0] = Box::new(ToggleLayerKey {
+        layer_name: "second".to_string()
+    });
     ans.codes[3][0] = Box::new(KEY::KEY_A);
-    ans.codes[3][1] = Box::new( MacroKey {
+    ans.codes[3][1] = Box::new(MacroKey {
         play_macro_when: KeyStateChange::Released,
         keys: vec![KEY::KEY_H, KEY::KEY_E, KEY::KEY_L, KEY::KEY_L, KEY::KEY_O],
     });
     ans
 }
 
-fn base_layer() -> Layer {
-    Layer {
-        name: "base".to_string(),
-        enabled: true,
-        codes: base_layer_keys(),
-    }
+fn secondary_layer_keys() -> KeyCodeMatrix {
+    let mut ans = KeyCodeMatrix::new((4,3));
+    ans.codes[3][0] = Box::new(KEY::KEY_2);
+    ans
 }
 
 fn cyclic_executor<F>(action: &mut F) where F: FnMut() {
@@ -62,10 +63,12 @@ fn main() {
 
     let mut f = LayeredKeyboardDriver {
         driver: keyboard,
-        layers: Vec::new()
+        layered_codes: Vec::new(),
+        layer_attributes: LayerCollection::new(),
     };
 
-    f.layers.push(base_layer());
+    f.add_layer(LayerAttributes { name: "base".to_string(), enabled: true }, base_layer_keys());
+    f.add_layer(LayerAttributes { name: "second".to_string(), enabled: false }, secondary_layer_keys());
 
     let mut update = || tick(&mut f);
     cyclic_executor(&mut update);

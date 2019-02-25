@@ -1,5 +1,5 @@
 use evdev_rs as evdev;
-use crate::layer::Layer;
+use crate::layer::LayerCollection;
 use crate::virtual_keyboard_matrix::KeyStateChange;
 use crate::keyboard_driver::KeyboardDriver;
 
@@ -10,7 +10,7 @@ pub use evdev::enums::EV_KEY as KEY;
 pub trait KeyCode {
 
     // Handle a state change event for this key.
-    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange) { }
+    fn handle_event(&self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection) { }
 
     // Is the key transparent (i.e. that when stacking layers, the key is a pass-through
     // to the key below it.
@@ -21,7 +21,7 @@ pub struct BlankKey;
 impl KeyCode for BlankKey { }
 
 impl KeyCode for KEY {
-    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange) {
+    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection) {
         let v = evdev::InputEvent {
             time: evdev::TimeVal {
                 tv_usec: 0,
@@ -47,14 +47,28 @@ pub struct MacroKey {
 }
 
 impl KeyCode for MacroKey {
-    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange) {
+    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
         if state == self.play_macro_when {
             for i in self.keys.iter() {
-                i.handle_event(driver, KeyStateChange::Pressed);
-                i.handle_event(driver, KeyStateChange::Released);
+                i.handle_event(driver, KeyStateChange::Pressed, l);
+                i.handle_event(driver, KeyStateChange::Released, l);
             }
         }
 
+    }
+
+    fn is_transparent(&self) -> bool { false }
+}
+
+pub struct ToggleLayerKey {
+    pub layer_name: String
+}
+
+impl KeyCode for ToggleLayerKey {
+    fn handle_event(&self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+        if state == KeyStateChange::Released {
+            l.toggle(&self.layer_name);
+        }
     }
 
     fn is_transparent(&self) -> bool { false }

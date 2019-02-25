@@ -111,7 +111,6 @@ impl VirtualKeyboardMatrix {
 struct StateMatrix {
     state: Vec<Vec<bool>>,
     last_pressed: Vec<Vec<SystemTime>>,
-    dim: Index2D
 }
 
 impl StateMatrix {
@@ -120,7 +119,6 @@ impl StateMatrix {
         StateMatrix {
             state: vec![vec![false; dim.1]; dim.0],
             last_pressed: vec![vec![UNIX_EPOCH; dim.1]; dim.0],
-            dim
         }
     }
 
@@ -138,23 +136,6 @@ impl StateMatrix {
             }
         } else {
             None
-        }
-    }
-
-    pub fn pretty_print(&self) {
-        for r in 0..self.dim.0 {
-            for c in 0..self.dim.1 {
-                if self.state[r][c] {
-                    print!("1");
-                } else {
-                    print!("0");
-                }
-                if c == self.dim.1 - 1 {
-                    println!("");
-                } else {
-                    print!(" ");
-                }
-            }
         }
     }
 
