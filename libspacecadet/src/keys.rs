@@ -86,3 +86,17 @@ impl KeyCode for MomentarilyEnableLayerKey {
         }
     }
 }
+
+// Imitating TO
+pub struct EnableLayerKey {
+    pub layer_name: String
+}
+
+impl KeyCode for EnableLayerKey {
+    fn handle_event(&self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+        match state {
+            KeyStateChange::Pressed => { l.set(&self.layer_name, true); }
+            _ => {}
+        }
+    }
+}
