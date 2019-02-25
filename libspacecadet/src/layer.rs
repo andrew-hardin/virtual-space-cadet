@@ -61,4 +61,8 @@ impl LayerCollection {
         let v = &mut self.attributes[self.name_to_idx[name]].enabled;
         *v = !*v;
     }
+
+    pub fn set(&mut self, name: &str, val: bool) {
+        self.attributes[self.name_to_idx[name]].enabled = val;
+    }
 }

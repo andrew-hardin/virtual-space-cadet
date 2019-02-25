@@ -14,11 +14,13 @@ pub trait KeyCode {
 
     // Is the key transparent (i.e. that when stacking layers, the key is a pass-through
     // to the key below it.
-    fn is_transparent(&self) -> bool { true }
+    fn is_transparent(&self) -> bool { false }
 }
 
 pub struct BlankKey;
-impl KeyCode for BlankKey { }
+impl KeyCode for BlankKey {
+    fn is_transparent(&self) -> bool { true }
+}
 
 impl KeyCode for KEY {
     fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection) {
@@ -37,8 +39,6 @@ impl KeyCode for KEY {
         };
         driver.output.send(v);
     }
-
-    fn is_transparent(&self) -> bool { false }
 }
 
 pub struct MacroKey {
@@ -56,8 +56,6 @@ impl KeyCode for MacroKey {
         }
 
     }
-
-    fn is_transparent(&self) -> bool { false }
 }
 
 pub struct ToggleLayerKey {
@@ -70,6 +68,21 @@ impl KeyCode for ToggleLayerKey {
             l.toggle(&self.layer_name);
         }
     }
+}
 
-    fn is_transparent(&self) -> bool { false }
+// Imitating MO.
+// TODO: enforce the "enabled layer must be a transparent key" constraint.
+//       this constraint is mentioned in some of the QMK documentation...
+pub struct MomentarilyEnableLayerKey {
+    pub layer_name: String
+}
+
+impl KeyCode for MomentarilyEnableLayerKey {
+    fn handle_event(&self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+        match state {
+            KeyStateChange::Held =>  { }
+            KeyStateChange::Released => { l.set(&self.layer_name, false); }
+            KeyStateChange::Pressed => { l.set(&self.layer_name, true); }
+        }
+    }
 }
