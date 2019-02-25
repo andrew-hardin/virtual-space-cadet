@@ -17,7 +17,7 @@ pub trait KeyCode {
     fn is_transparent(&self) -> bool { true }
 }
 
-pub struct BlankKey { }
+pub struct BlankKey;
 impl KeyCode for BlankKey { }
 
 impl KeyCode for KEY {
@@ -36,6 +36,25 @@ impl KeyCode for KEY {
             }
         };
         driver.output.send(v);
+    }
+
+    fn is_transparent(&self) -> bool { false }
+}
+
+pub struct MacroKey {
+    pub play_macro_when: KeyStateChange,
+    pub keys: Vec<KEY>,
+}
+
+impl KeyCode for MacroKey {
+    fn handle_event(&self, driver: &mut KeyboardDriver, state: KeyStateChange) {
+        if state == self.play_macro_when {
+            for i in self.keys.iter() {
+                i.handle_event(driver, KeyStateChange::Pressed);
+                i.handle_event(driver, KeyStateChange::Released);
+            }
+        }
+
     }
 
     fn is_transparent(&self) -> bool { false }

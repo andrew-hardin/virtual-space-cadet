@@ -16,6 +16,10 @@ fn get_keypad_matrix() -> KeyMatrix {
 fn base_layer_keys() -> KeyCodeMatrix {
     let mut ans = KeyCodeMatrix::new((4,3));
     ans.codes[3][0] = Box::new(KEY::KEY_A);
+    ans.codes[3][1] = Box::new( MacroKey {
+        play_macro_when: KeyStateChange::Released,
+        keys: vec![KEY::KEY_H, KEY::KEY_E, KEY::KEY_L, KEY::KEY_L, KEY::KEY_O],
+    });
     ans
 }
 

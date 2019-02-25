@@ -7,7 +7,7 @@ use crate::keys;
 pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
 pub type Index2D = (usize, usize);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum KeyStateChange {
     Pressed,
     Released,
