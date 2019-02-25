@@ -32,6 +32,7 @@ pub struct LayerAttributes {
 pub struct LayerCollection {
     pub attributes: Vec<LayerAttributes>,
     name_to_idx: HashMap<String, usize>,
+    layers_to_disable_upon_release: Vec<(String, u64)>
 }
 
 impl LayerCollection {
@@ -39,7 +40,8 @@ impl LayerCollection {
     pub fn new() -> LayerCollection {
         LayerCollection {
             attributes: Vec::new(),
-            name_to_idx: HashMap::new()
+            name_to_idx: HashMap::new(),
+            layers_to_disable_upon_release: Vec::new()
         }
     }
 
@@ -63,7 +65,35 @@ impl LayerCollection {
     }
 
     pub fn set(&mut self, name: &str, val: bool) {
-        println!("Setting layer {} to {}", name, val);
+        println!("Setting {} to {}", name, val);
         self.attributes[self.name_to_idx[name]].enabled = val;
+    }
+
+    // TODO: should layer callbacks be relocated? What owns this responsibility?
+
+    // Disable the given layer after the next key is released.
+    pub fn disable_layer_after_release(&mut self, name: &str, target_release_count: u64) {
+        // I'm pretty sure this capability shouldn't live here.
+        self.layers_to_disable_upon_release.push((name.to_string(), target_release_count));
+    }
+
+    pub fn check_callbacks(&mut self, current_count: u64) {
+
+        let mut to_disable = Vec::new();
+        for i in 0..self.layers_to_disable_upon_release.len() {
+            let count = self.layers_to_disable_upon_release[i].1;
+            if count <= current_count {
+                to_disable.push(i);
+            }
+        }
+
+        let mut alter = 0;
+        for mut i in to_disable {
+            i += alter;
+            let s = self.layers_to_disable_upon_release[i].0.clone();
+            self.set(&s, false);
+            self.layers_to_disable_upon_release.remove(i);
+            alter += 1
+        }
     }
 }

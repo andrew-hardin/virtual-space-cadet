@@ -4,7 +4,8 @@ use std::os::raw::c_int;
 
 pub struct OutputKeyboard {
     device: uinput::Device,
-    evdev_to_uinput: EvdevToUinput
+    evdev_to_uinput: EvdevToUinput,
+    pub count_released_keys: u64
 }
 
 impl OutputKeyboard {
@@ -16,13 +17,17 @@ impl OutputKeyboard {
 
         OutputKeyboard {
             device: device,
-            evdev_to_uinput: EvdevToUinput::new()
+            evdev_to_uinput: EvdevToUinput::new(),
+            count_released_keys: 0,
         }
     }
 
     pub fn send(&mut self, e: evdev::InputEvent) {
         // evdev event -> uinput event -> device command.
         let code = e.value;
+        if code == 0 {
+            self.count_released_keys += 1;
+        }
         let e = self.evdev_to_uinput.convert(e).unwrap();
         println!("sending {:?} (val = {})", e, code);
         self.device.send(e, code).unwrap();

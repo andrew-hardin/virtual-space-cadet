@@ -147,3 +147,28 @@ impl KeyCode for HoldEnableLayerPressKey {
 
     }
 }
+
+// Imitate OSL.
+pub struct OneShotLayer {
+    pub layer_name: String
+}
+
+// TODO: what happens to the release after we've moved to the different layer?
+//       related to HoldEnableLayerPressKey
+impl KeyCode for OneShotLayer {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+        match state {
+            KeyStateChange::Held => { }
+            KeyStateChange::Pressed => {
+                // Enable the target layer.
+                l.set(&self.layer_name, true);
+
+                // Inject a call-back into *some object* that disables the layer
+                // after another key has been released (this position doesn't count).
+                l.disable_layer_after_release(&self.layer_name, driver.output.count_released_keys + 1);
+            }
+            KeyStateChange::Released => { }
+        }
+
+    }
+}

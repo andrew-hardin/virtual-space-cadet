@@ -32,6 +32,9 @@ impl LayeredKeyboardDriver {
 
     pub fn clock_tick(&mut self) {
 
+        // Before dispatching new events, check if any layers need to be disabled.
+        self.layer_attributes.check_callbacks(self.driver.output.count_released_keys);
+
         // Check for any keys that have been held down and oppressed by the user.
         // TODO: relocate constant to a config/params object.
         let hold_down_threshold = Duration::from_millis(250);
