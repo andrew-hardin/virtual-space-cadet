@@ -2,7 +2,7 @@ use crate::input_keyboard::*;
 use crate::output_keyboard::*;
 use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 
 pub struct KeyboardDriver {

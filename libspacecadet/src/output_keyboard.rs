@@ -2,7 +2,6 @@ use evdev_rs as evdev;
 use std::collections::HashMap;
 use std::os::raw::c_int;
 use crate::KeyStats;
-use crate::KeyStateChange;
 
 pub struct OutputKeyboard {
     device: uinput::Device,

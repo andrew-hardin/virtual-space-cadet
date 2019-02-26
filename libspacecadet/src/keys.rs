@@ -1,6 +1,6 @@
 use evdev_rs as evdev;
 use crate::layer::LayerCollection;
-use crate::virtual_keyboard_matrix::{KeyStateChange, KeyStats};
+use crate::virtual_keyboard_matrix::KeyStateChange;
 use crate::keyboard_driver::KeyboardDriver;
 use crate::layer::ScheduledLayerEvent;
 

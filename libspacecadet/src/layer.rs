@@ -84,23 +84,18 @@ impl LayerCollection {
     // Check if any layer related events have occurred.
     pub fn check_event_callbacks(&mut self, state: KeyStats) {
 
-        // TODO: rewrite this to be pretty.
-        let mut to_disable = Vec::new();
-        for i in 0..self.event_layer_callbacks.len() {
-            let e = &self.event_layer_callbacks[i];
-            if e.event_count <= state.get(e.event_type) {
-                to_disable.push(i);
+        // This function could be replaced by drain_filter, but it's a nightly-only experiment.
+        let mut to_change: Vec<(String, bool)> = Vec::new();
+        self.event_layer_callbacks.retain(|x| {
+            let ready = x.event_count <= state.get(x.event_type);
+            if ready {
+                to_change.push((x.layer_name.clone(), x.enable_layer_at_event));
             }
-        }
+            !ready
+        });
 
-        let mut alter = 0;
-        for mut i in to_disable {
-            i += alter;
-            let s = self.event_layer_callbacks[i].layer_name.clone();
-            let v = self.event_layer_callbacks[i].enable_layer_at_event;
-            self.set(&s, v);
-            self.event_layer_callbacks.remove(i);
-            alter += 1
+        for (name, state) in to_change {
+            self.set(&name, state);
         }
     }
 }

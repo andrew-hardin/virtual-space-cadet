@@ -1,8 +1,5 @@
 use evdev_rs as evdev;
-use evdev_rs::enums::EV_KEY::KEY_S;
-use crate::{KeyStateChange, KeyStats};
-
-
+use crate::KeyStats;
 
 
 pub struct InputKeyboard {
