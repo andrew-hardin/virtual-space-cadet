@@ -7,11 +7,42 @@ use crate::keys;
 pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
 pub type Index2D = (usize, usize);
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyStateChange {
-    Pressed,
-    Released,
-    Held
+    Released = 0,
+    Pressed = 1,
+    Held = 2,
+}
+
+impl Into<KeyStateChange> for i32 {
+    fn into(self) -> KeyStateChange {
+        match self {
+            0 => KeyStateChange::Released,
+            1 => KeyStateChange::Pressed,
+            2 => KeyStateChange::Held,
+            _ => panic!()
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct KeyStats {
+    values: [u32; 3]
+}
+
+impl KeyStats {
+    pub fn new() -> KeyStats {
+        KeyStats {
+            values: [0, 0, 0]
+        }
+    }
+    pub fn increment(&mut self, v: KeyStateChange) {
+        self.values[v as usize] += 1;
+    }
+
+    pub fn get(&self, v: KeyStateChange) -> u32 {
+        self.values[v as usize]
+    }
 }
 
 pub struct VirtualKeyboardMatrix {

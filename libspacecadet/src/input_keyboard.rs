@@ -1,8 +1,14 @@
 use evdev_rs as evdev;
+use evdev_rs::enums::EV_KEY::KEY_S;
+use crate::{KeyStateChange, KeyStats};
+
+
+
 
 pub struct InputKeyboard {
     _file_descriptor: std::fs::File,
-    device: evdev::Device
+    device: evdev::Device,
+    pub stats: KeyStats
 }
 
 impl InputKeyboard {
@@ -23,13 +29,14 @@ impl InputKeyboard {
 
         InputKeyboard {
             _file_descriptor : file_descriptor,
-            device
+            device,
+            stats: KeyStats::new(),
         }
     }
 
     // Read all pending events from the device.
     // Non-blocking (i.e. returns if no events were there).
-    pub fn read_events(&self) -> Vec<evdev::InputEvent> {
+    pub fn read_events(&mut self) -> Vec<evdev::InputEvent> {
         let mut ans= Vec::new();
         loop {
             // TODO: based on the library example, there may be an
@@ -47,6 +54,11 @@ impl InputKeyboard {
                 Err(_) => break
             }
         }
+
+        for i in ans.iter() {
+            self.stats.increment(i.value.into());
+        }
+
         ans
     }
 }

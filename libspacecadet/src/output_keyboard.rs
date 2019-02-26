@@ -1,11 +1,13 @@
 use evdev_rs as evdev;
 use std::collections::HashMap;
 use std::os::raw::c_int;
+use crate::KeyStats;
+use crate::KeyStateChange;
 
 pub struct OutputKeyboard {
     device: uinput::Device,
     evdev_to_uinput: EvdevToUinput,
-    pub count_released_keys: u64
+    pub stats: KeyStats
 }
 
 impl OutputKeyboard {
@@ -18,16 +20,14 @@ impl OutputKeyboard {
         OutputKeyboard {
             device: device,
             evdev_to_uinput: EvdevToUinput::new(),
-            count_released_keys: 0,
+            stats: KeyStats::new(),
         }
     }
 
     pub fn send(&mut self, e: evdev::InputEvent) {
         // evdev event -> uinput event -> device command.
         let code = e.value;
-        if code == 0 {
-            self.count_released_keys += 1;
-        }
+        self.stats.increment(code.into());
         let e = self.evdev_to_uinput.convert(e).unwrap();
         println!("sending {:?} (val = {})", e, code);
         self.device.send(e, code).unwrap();

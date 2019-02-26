@@ -1,10 +1,12 @@
 use evdev_rs as evdev;
 use crate::layer::LayerCollection;
-use crate::virtual_keyboard_matrix::KeyStateChange;
+use crate::virtual_keyboard_matrix::{KeyStateChange, KeyStats};
 use crate::keyboard_driver::KeyboardDriver;
+use crate::layer::ScheduledLayerEvent;
 
 pub use evdev::enums::EV_KEY as KEY;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 
 
 // A key code is our primary interface for keys.
@@ -130,10 +132,10 @@ impl KeyCode for HoldEnableLayerPressKey {
                 */
             }
             KeyStateChange::Pressed => {
-                self.pressed_at = driver.now();
+                self.pressed_at = SystemTime::now();
             }
             KeyStateChange::Released => {
-                let delta = driver.now().duration_since(self.pressed_at).unwrap();
+                let delta = SystemTime::now().duration_since(self.pressed_at).unwrap();
                 // TODO: extract hold duration parameter...
                 let was_held = delta > Duration::from_millis(200);
                 if was_held {
@@ -163,9 +165,16 @@ impl KeyCode for OneShotLayer {
                 // Enable the target layer.
                 l.set(&self.layer_name, true);
 
-                // Inject a call-back into *some object* that disables the layer
+                // Inject a counter based call-back that disables the layer
                 // after another key has been released (this position doesn't count).
-                l.disable_layer_after_release(&self.layer_name, driver.output.count_released_keys + 1);
+                let t = KeyStateChange::Released;
+                let e = ScheduledLayerEvent {
+                    layer_name: self.layer_name.clone(),
+                    event_type: t,
+                    event_count: driver.output.stats.get(t) + 1,
+                    enable_layer_at_event: false,
+                };
+                l.schedule_event_count_callback(e);
             }
             KeyStateChange::Released => { }
         }

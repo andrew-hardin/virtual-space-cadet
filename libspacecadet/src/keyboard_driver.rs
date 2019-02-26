@@ -4,17 +4,11 @@ use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
 use std::time::{Duration, SystemTime};
 
+
 pub struct KeyboardDriver {
     pub input: InputKeyboard,
     pub output: OutputKeyboard,
     pub matrix: VirtualKeyboardMatrix,
-}
-
-impl KeyboardDriver {
-    pub fn now(&self) -> SystemTime {
-        // TODO: cache the time once per tick, then remove all references to SystemTime::now().
-        SystemTime::now()
-    }
 }
 
 pub struct LayeredKeyboardDriver {
@@ -33,7 +27,7 @@ impl LayeredKeyboardDriver {
     pub fn clock_tick(&mut self) {
 
         // Before dispatching new events, check if any layers need to be disabled.
-        self.layer_attributes.check_callbacks(self.driver.output.count_released_keys);
+        self.layer_attributes.check_event_callbacks(self.driver.output.stats);
 
         // Check for any keys that have been held down and oppressed by the user.
         // TODO: relocate constant to a config/params object.

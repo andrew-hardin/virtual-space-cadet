@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::virtual_keyboard_matrix::Index2D;
 use crate::keys::*;
+use crate::virtual_keyboard_matrix::{KeyStats, KeyStateChange};
 
 pub struct KeyCodeMatrix {
     pub codes: Vec<Vec<Box<KeyCode>>>,
@@ -32,7 +33,14 @@ pub struct LayerAttributes {
 pub struct LayerCollection {
     pub attributes: Vec<LayerAttributes>,
     name_to_idx: HashMap<String, usize>,
-    layers_to_disable_upon_release: Vec<(String, u64)>
+    event_layer_callbacks: Vec<ScheduledLayerEvent>
+}
+
+pub struct ScheduledLayerEvent {
+    pub layer_name: String,
+    pub event_type: KeyStateChange,
+    pub event_count: u32,
+    pub enable_layer_at_event: bool
 }
 
 impl LayerCollection {
@@ -41,11 +49,10 @@ impl LayerCollection {
         LayerCollection {
             attributes: Vec::new(),
             name_to_idx: HashMap::new(),
-            layers_to_disable_upon_release: Vec::new()
+            event_layer_callbacks: Vec::new()
         }
     }
 
-    // TODO: check best practices for passing the most general string to a fn.
     pub fn add(&mut self, attr: LayerAttributes) {
         self.name_to_idx.insert(attr.name.clone(), self.attributes.len());
         self.attributes.push(attr);
@@ -65,24 +72,23 @@ impl LayerCollection {
     }
 
     pub fn set(&mut self, name: &str, val: bool) {
-        println!("Setting {} to {}", name, val);
+        println!("Layer \"{}\" = {}", name, val);
         self.attributes[self.name_to_idx[name]].enabled = val;
     }
 
-    // TODO: should layer callbacks be relocated? What owns this responsibility?
-
-    // Disable the given layer after the next key is released.
-    pub fn disable_layer_after_release(&mut self, name: &str, target_release_count: u64) {
-        // I'm pretty sure this capability shouldn't live here.
-        self.layers_to_disable_upon_release.push((name.to_string(), target_release_count));
+    // Schedule a layer related event.
+    pub fn schedule_event_count_callback(&mut self, e: ScheduledLayerEvent) {
+        self.event_layer_callbacks.push(e);
     }
 
-    pub fn check_callbacks(&mut self, current_count: u64) {
+    // Check if any layer related events have occurred.
+    pub fn check_event_callbacks(&mut self, state: KeyStats) {
 
+        // TODO: rewrite this to be pretty.
         let mut to_disable = Vec::new();
-        for i in 0..self.layers_to_disable_upon_release.len() {
-            let count = self.layers_to_disable_upon_release[i].1;
-            if count <= current_count {
+        for i in 0..self.event_layer_callbacks.len() {
+            let e = &self.event_layer_callbacks[i];
+            if e.event_count <= state.get(e.event_type) {
                 to_disable.push(i);
             }
         }
@@ -90,9 +96,10 @@ impl LayerCollection {
         let mut alter = 0;
         for mut i in to_disable {
             i += alter;
-            let s = self.layers_to_disable_upon_release[i].0.clone();
-            self.set(&s, false);
-            self.layers_to_disable_upon_release.remove(i);
+            let s = self.event_layer_callbacks[i].layer_name.clone();
+            let v = self.event_layer_callbacks[i].enable_layer_at_event;
+            self.set(&s, v);
+            self.event_layer_callbacks.remove(i);
             alter += 1
         }
     }
