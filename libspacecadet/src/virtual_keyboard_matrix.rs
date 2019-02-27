@@ -45,12 +45,56 @@ impl KeyStats {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct BlockedKeyStates {
+    blocked: [bool; 3]
+}
+
+impl BlockedKeyStates {
+    pub fn new() -> BlockedKeyStates {
+        BlockedKeyStates {
+            blocked: [false; 3]
+        }
+    }
+    pub fn new_block_presses_and_holds() -> BlockedKeyStates {
+        let mut ans = BlockedKeyStates::new();
+        ans.blocked[KeyStateChange::Released as usize] = true;
+        ans.blocked[KeyStateChange::Held as usize] = true;
+        ans
+    }
+
+    fn check(&mut self, input: Option<KeyStateChange>) -> Option<KeyStateChange> {
+        match input {
+            Some(s) => {
+                if s == KeyStateChange::Held && self.blocked[s as usize] {
+                    // Multiple holds are blocked.
+                    None
+                } else if self.blocked[s as usize] {
+                    // Press or releases are only blocked once
+                    // before all blocks are turned off.
+                    self.unblock();
+                    None
+                } else {
+                    Some(s)
+                }
+            }
+            None => None
+        }
+    }
+
+    fn unblock(&mut self) {
+        self.blocked = [false; 3];
+    }
+}
+
 pub struct VirtualKeyboardMatrix {
     key_to_index: HashMap<evdev::enums::EV_KEY, Index2D>,
     dim: Index2D,
-    state: StateMatrix
+    state: StateMatrix,
+    blocked: Vec<Vec<BlockedKeyStates>>
 }
 
+#[derive(Copy, Clone)]
 pub struct UpdateResult {
     pub state_change: Option<KeyStateChange>,
     pub location: Index2D,
@@ -77,13 +121,25 @@ impl VirtualKeyboardMatrix {
         VirtualKeyboardMatrix {
             key_to_index: hash,
             dim: dim,
-            state: StateMatrix::new(dim)
+            state: StateMatrix::new(dim),
+            blocked: vec![vec![BlockedKeyStates::new(); dim.1]; dim.0],
         }
+    }
+
+    pub fn set_block(&mut self, block: BlockedKeyStates, idx: Index2D) {
+        self.blocked[idx.0][idx.1] = block;
+    }
+
+    pub fn update(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
+        // Update the matrix, then check if the event is blocked.
+        // A blocked event returns a None...
+        let ans = self.update_without_blocking(event);
+        self.check_blocking(ans)
     }
 
     // Update the matrix state by processing a single event.
     // Returns a bool indicating if the event was in the matrix.
-    pub fn update(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
+    fn update_without_blocking(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
 
         // Convert the event time into a friendly representation.
         let now = UNIX_EPOCH +
@@ -119,6 +175,14 @@ impl VirtualKeyboardMatrix {
     }
 
     pub fn detect_held_keys(&mut self, held_key_threshold: Duration) -> Vec<UpdateResult> {
+        // Detect held keys, then drop those that are "blocked".
+        self.detect_held_keys_without_blocking(held_key_threshold).iter()
+            .map(|x| self.check_blocking(Some(*x)))
+            .filter_map(|x| x)
+            .collect()
+    }
+
+    fn detect_held_keys_without_blocking(&mut self, held_key_threshold: Duration) -> Vec<UpdateResult> {
         // Loop through every cell in the matrix and detect keys that
         // have been held for longer than the given threshold.
         let mut ans = Vec::new();
@@ -136,6 +200,20 @@ impl VirtualKeyboardMatrix {
             }
         }
         ans
+    }
+
+    fn check_blocking(&mut self, item: Option<UpdateResult>) -> Option<UpdateResult> {
+        match item {
+            Some(mut t) => {
+                // Some key state changes are "blocked", meaning that the virtual keyboard matrix
+                // doesn't report that they occurred. These blocked events are useful for special
+                // function keys, like those that swap layers on key PRESS. Blocking events prevents
+                // the key RELEASE from registering on the new layer.
+                t.state_change = self.blocked[t.location.0][t.location.1].check(t.state_change);
+                Some(t)
+            }
+            None => item
+        }
     }
 }
 

@@ -28,6 +28,7 @@ fn base_layer_keys() -> KeyCodeMatrix {
 
 fn secondary_layer_keys() -> KeyCodeMatrix {
     let mut ans = KeyCodeMatrix::new((4,3));
+    ans.codes[0][0] = Box::new(KEY::KEY_9);
     ans.codes[3][0] = Box::new(KEY::KEY_2);
     ans
 }

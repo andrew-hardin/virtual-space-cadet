@@ -65,7 +65,7 @@ impl LayeredKeyboardDriver {
                 let code = &mut self.layered_codes[i].codes[idx.0][idx.1];
                 if !code.is_transparent() {
                     println!("Found key on layer {}", i);
-                    code.handle_event(&mut self.driver, state, &mut self.layer_attributes);
+                    code.handle_event(&mut self.driver, state, &mut self.layer_attributes, idx);
                     return;
                 }
             }

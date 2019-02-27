@@ -1,19 +1,20 @@
 use evdev_rs as evdev;
 use crate::layer::LayerCollection;
 use crate::virtual_keyboard_matrix::KeyStateChange;
+use crate::virtual_keyboard_matrix::Index2D;
 use crate::keyboard_driver::KeyboardDriver;
 use crate::layer::ScheduledLayerEvent;
 
 pub use evdev::enums::EV_KEY as KEY;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
+use crate::virtual_keyboard_matrix::BlockedKeyStates;
 
 
 // A key code is our primary interface for keys.
 pub trait KeyCode {
 
     // Handle a state change event for this key.
-    fn handle_event(&mut self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection) { }
+    fn handle_event(&mut self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection, _: Index2D) { }
 
     // Is the key transparent (i.e. that when stacking layers, the key is a pass-through
     // to the key below it.
@@ -26,7 +27,7 @@ impl KeyCode for BlankKey {
 }
 
 impl KeyCode for KEY {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection, _: Index2D) {
         let v = evdev::InputEvent {
             time: evdev::TimeVal {
                 tv_usec: 0,
@@ -50,11 +51,11 @@ pub struct MacroKey {
 }
 
 impl KeyCode for MacroKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
         if state == self.play_macro_when {
             for i in self.keys.iter_mut() {
-                i.handle_event(driver, KeyStateChange::Pressed, l);
-                i.handle_event(driver, KeyStateChange::Released, l);
+                i.handle_event(driver, KeyStateChange::Pressed, l, idx);
+                i.handle_event(driver, KeyStateChange::Released, l, idx);
             }
         }
 
@@ -66,7 +67,7 @@ pub struct ToggleLayerKey {
 }
 
 impl KeyCode for ToggleLayerKey {
-    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, _: Index2D) {
         if state == KeyStateChange::Released {
             l.toggle(&self.layer_name);
         }
@@ -81,7 +82,7 @@ pub struct MomentarilyEnableLayerKey {
 }
 
 impl KeyCode for MomentarilyEnableLayerKey {
-    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, _: Index2D) {
         match state {
             KeyStateChange::Held =>  { }
             KeyStateChange::Released => { l.set(&self.layer_name, false); }
@@ -96,9 +97,17 @@ pub struct EnableLayerKey {
 }
 
 impl KeyCode for EnableLayerKey {
-    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
         match state {
-            KeyStateChange::Pressed => { l.set(&self.layer_name, true); }
+            KeyStateChange::Pressed => {
+                // Enable the layer.
+                l.set(&self.layer_name, true);
+
+                // This was a PRESSED, but a RELEASED event will soon follow.
+                // We don't want that event to hit the layer we just switched to.
+                // Temporarily block the release + hold events for this layer position.
+                driver.matrix.set_block(BlockedKeyStates::new_block_presses_and_holds(), idx);
+            }
             _ => {}
         }
     }
@@ -122,7 +131,7 @@ impl HoldEnableLayerPressKey {
 }
 
 impl KeyCode for HoldEnableLayerPressKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
         match state {
             KeyStateChange::Held => {
                 /*
@@ -141,8 +150,8 @@ impl KeyCode for HoldEnableLayerPressKey {
                 if was_held {
                     l.set(&self.layer_name, true);
                 } else {
-                    self.key.handle_event(driver, KeyStateChange::Pressed, l);
-                    self.key.handle_event(driver, KeyStateChange::Released, l);
+                    self.key.handle_event(driver, KeyStateChange::Pressed, l, idx);
+                    self.key.handle_event(driver, KeyStateChange::Released, l, idx);
                 }
             }
         }
@@ -155,10 +164,8 @@ pub struct OneShotLayer {
     pub layer_name: String
 }
 
-// TODO: what happens to the release after we've moved to the different layer?
-//       related to HoldEnableLayerPressKey
 impl KeyCode for OneShotLayer {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection) {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
         match state {
             KeyStateChange::Held => { }
             KeyStateChange::Pressed => {
@@ -175,6 +182,15 @@ impl KeyCode for OneShotLayer {
                     enable_layer_at_event: false,
                 };
                 l.schedule_event_count_callback(e);
+
+                // Register a block that temporarily prevents any holds or releases
+                // for being registered for this key. If this block was being run under
+                // a RELEASED event, then this wouldn't be necessary.
+                //
+                // ... but based on one man's opinion, the ergonomics are better if the layer
+                // switches on PRESS (especially when typing quickly).
+                driver.matrix.set_block(BlockedKeyStates::new_block_presses_and_holds(), idx);
+
             }
             KeyStateChange::Released => { }
         }
