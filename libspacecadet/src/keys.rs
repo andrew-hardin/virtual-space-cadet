@@ -62,14 +62,17 @@ impl KeyCode for MacroKey {
     }
 }
 
+// Imitating TG.
 pub struct ToggleLayerKey {
     pub layer_name: String
 }
 
 impl KeyCode for ToggleLayerKey {
-    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, _: Index2D) {
-        if state == KeyStateChange::Released {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
+        if state == KeyStateChange::Pressed {
+            // Toggle the layer, and mask the RELEASED event that'll be processed soon.
             l.toggle(&self.layer_name);
+            driver.matrix.set_block(BlockedKeyStates::new_block_presses_and_holds(), idx);
         }
     }
 }
