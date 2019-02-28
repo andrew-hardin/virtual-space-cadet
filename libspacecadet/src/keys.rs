@@ -202,7 +202,7 @@ impl KeyCode for OneShotLayer {
 }
 
 pub struct ModifierWrappedKey {
-    pub key: KEY,
+    pub key: Box<KeyCode>,
     pub modifier: KEY,
 }
 

@@ -15,7 +15,7 @@ fn get_keypad_matrix() -> KeyMatrix {
 
 fn base_layer_keys() -> KeyCodeMatrix {
     let left_paren = Box::new(ModifierWrappedKey {
-        key: KEY::KEY_9,
+        key: Box::new(KEY::KEY_9),
         modifier: KEY::KEY_LEFTSHIFT
     });
 
