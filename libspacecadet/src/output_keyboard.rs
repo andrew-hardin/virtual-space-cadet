@@ -3,9 +3,76 @@ use std::collections::HashMap;
 use std::os::raw::c_int;
 use crate::KeyStats;
 
+#[derive(PartialEq, Debug)]
+pub enum BufferSendKeysWhen {
+    Immediately,
+    BufferFull,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum BufferAfterSendingKeys {
+    StopBuffering
+}
+
+pub struct EventBuffer {
+    buffer: Vec<evdev::InputEvent>,
+    send_keys_policy: BufferSendKeysWhen,
+    post_send_policy: BufferAfterSendingKeys,
+}
+
+impl EventBuffer {
+    pub fn new() -> EventBuffer {
+        EventBuffer {
+            buffer: Vec::with_capacity(0),
+            send_keys_policy: BufferSendKeysWhen::Immediately,
+            post_send_policy: BufferAfterSendingKeys::StopBuffering
+        }
+    }
+
+    pub fn new_spacecadet() -> EventBuffer {
+        EventBuffer {
+            buffer: Vec::with_capacity(2),
+            send_keys_policy: BufferSendKeysWhen::BufferFull,
+            post_send_policy: BufferAfterSendingKeys::StopBuffering
+        }
+    }
+
+    pub fn add(&mut self, e: evdev::InputEvent) -> Vec<evdev::InputEvent> {
+        match self.send_keys_policy {
+            BufferSendKeysWhen::Immediately => { vec![e] },
+            BufferSendKeysWhen::BufferFull => {
+                // Add the event onto the buffer.
+                assert_eq!(false, self.is_full());
+                self.buffer.push(e);
+
+                // If the buffer is full, we need to return all the key events
+                // and clear the internal buffer + stop buffering (capacity = 0).
+                if self.is_full() {
+                    let ans = self.buffer.clone();
+                    match self.post_send_policy {
+                        BufferAfterSendingKeys::StopBuffering => {
+                            self.buffer = Vec::with_capacity(0);
+                            self.send_keys_policy = BufferSendKeysWhen::Immediately;
+                        }
+                    }
+                    ans
+                } else {
+                    // The buffer isn't full, so don't return any keys.
+                    Vec::new()
+                }
+            }
+        }
+    }
+
+    fn is_full(&self) -> bool {
+        return self.buffer.capacity() == self.buffer.len()
+    }
+}
+
 pub struct OutputKeyboard {
     device: uinput::Device,
     evdev_to_uinput: EvdevToUinput,
+    event_buffer: EventBuffer,
     pub stats: KeyStats
 }
 
@@ -19,11 +86,23 @@ impl OutputKeyboard {
         OutputKeyboard {
             device: device,
             evdev_to_uinput: EvdevToUinput::new(),
+            event_buffer: EventBuffer::new(),
             stats: KeyStats::new(),
         }
     }
 
+    pub fn set_buffer(&mut self, buffer: EventBuffer) {
+        // TODO: what if the buffer already has keys?
+        self.event_buffer = buffer;
+    }
+
     pub fn send(&mut self, e: evdev::InputEvent) {
+        for item in self.event_buffer.add(e) {
+            self.send_unbuffered(item);
+        }
+    }
+
+    pub fn send_unbuffered(&mut self, e: evdev::InputEvent) {
         // evdev event -> uinput event -> device command.
         let code = e.value;
         self.stats.increment(code.into());

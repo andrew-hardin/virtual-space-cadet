@@ -14,22 +14,24 @@ fn get_keypad_matrix() -> KeyMatrix {
 }
 
 fn base_layer_keys() -> KeyCodeMatrix {
+    let left_paren = Box::new(ModifierWrappedKey {
+        key: KEY::KEY_9,
+        modifier: KEY::KEY_LEFTSHIFT
+    });
+
     let mut ans = KeyCodeMatrix::new((4,3));
     ans.codes[0][0] = Box::new(OneShotLayer {
         layer_name: "second".to_string()
     });
-    ans.codes[3][0] = Box::new(KEY::KEY_A);
-    ans.codes[3][1] = Box::new(MacroKey {
-        play_macro_when: KeyStateChange::Released,
-        keys: vec![KEY::KEY_H, KEY::KEY_E, KEY::KEY_L, KEY::KEY_L, KEY::KEY_O],
-    });
+    ans.codes[3][0] = Box::new(SpaceCadet::new(left_paren, KEY::KEY_LEFTSHIFT));
+    ans.codes[3][1] = Box::new(KEY::KEY_C);
     ans
 }
 
 fn secondary_layer_keys() -> KeyCodeMatrix {
-    let mut ans = KeyCodeMatrix::new((4,3));
-    ans.codes[0][0] = Box::new(KEY::KEY_9);
-    ans.codes[3][0] = Box::new(KEY::KEY_2);
+    let ans = KeyCodeMatrix::new((4, 3));
+    //ans.codes[0][0] = Box::new(KEY::KEY_9);
+    //ans.codes[3][0] = Box::new(KEY::KEY_2);
     ans
 }
 

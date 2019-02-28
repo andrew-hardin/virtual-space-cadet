@@ -8,6 +8,19 @@ use crate::layer::ScheduledLayerEvent;
 pub use evdev::enums::EV_KEY as KEY;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
+use crate::output_keyboard::EventBuffer;
+
+fn as_input_event(v: &KEY, state: KeyStateChange) -> evdev::InputEvent {
+    evdev::InputEvent {
+        time: evdev::TimeVal {
+            tv_usec: 0,
+            tv_sec: 0,
+        },
+        event_type : evdev::enums::EventType::EV_KEY,
+        event_code : evdev::enums::EventCode::EV_KEY(v.clone()),
+        value: state as i32
+    }
+}
 
 
 // A key code is our primary interface for keys.
@@ -28,20 +41,7 @@ impl KeyCode for BlankKey {
 
 impl KeyCode for KEY {
     fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection, _: Index2D) {
-        let v = evdev::InputEvent {
-            time: evdev::TimeVal {
-                tv_usec: 0,
-                tv_sec: 0,
-            },
-            event_type : evdev::enums::EventType::EV_KEY,
-            event_code : evdev::enums::EventCode::EV_KEY(self.clone()),
-            value: match state {
-                KeyStateChange::Held => 2,
-                KeyStateChange::Pressed => 1,
-                KeyStateChange::Released => 0,
-            }
-        };
-        driver.output.send(v);
+        driver.output.send(as_input_event(self, state));
     }
 }
 
@@ -198,5 +198,88 @@ impl KeyCode for OneShotLayer {
             KeyStateChange::Released => { }
         }
 
+    }
+}
+
+pub struct ModifierWrappedKey {
+    pub key: KEY,
+    pub modifier: KEY,
+}
+
+impl KeyCode for ModifierWrappedKey {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l: &mut LayerCollection, idx: Index2D) {
+        match state {
+            KeyStateChange::Pressed => {
+                self.modifier.handle_event(driver, state, l, idx);
+                self.key.handle_event(driver, state, l, idx);
+            }
+            KeyStateChange::Held => {
+                self.key.handle_event(driver, state, l, idx);
+            }
+            KeyStateChange::Released => {
+                self.key.handle_event(driver, state, l, idx);
+                self.modifier.handle_event(driver, state, l, idx);
+            }
+        }
+    }
+}
+
+pub struct SpaceCadet {
+    key_when_tapped: Box<KeyCode>,
+    modifier: KEY,
+    number_of_keys_pressed: u32
+}
+
+impl SpaceCadet {
+    pub fn new_from_key(when_tapped: KEY, modifier: KEY) -> SpaceCadet {
+        SpaceCadet::new(Box::new(when_tapped), modifier)
+    }
+
+    pub fn new(when_tapped: Box<KeyCode>, modifier: KEY) -> SpaceCadet {
+        SpaceCadet {
+            key_when_tapped: when_tapped,
+            modifier,
+            number_of_keys_pressed: 0
+        }
+    }
+}
+
+// TODO: The space cadet modifier is based on the stats of real key events that are being written.
+//       Special keys, like a layer change key, won't be logically recorded as a "key hit after this key".
+//       I'm not sure that's a problem, but maybe it indicates a problem with our logical
+//       representation of what's going on.
+impl KeyCode for SpaceCadet {
+    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l: &mut LayerCollection, idx: Index2D) {
+        match state {
+            KeyStateChange::Pressed => {
+                // When the key is pressed, we don't know whether to start the modifier
+                // or to emit a PRESS + RELEASE for the key. This means we need to watch
+                // for new key events. Key interception is well outside our permissions, so we'll
+                // rely on the driver to fill a two event buffer (modifier + some other key).
+                driver.output.set_buffer(EventBuffer::new_spacecadet());
+                self.modifier.handle_event(driver, KeyStateChange::Pressed, l, idx);
+                self.number_of_keys_pressed = driver.output.stats.get(KeyStateChange::Pressed);
+            }
+            KeyStateChange::Released => {
+                // Was the key pressed and released without any other keys being struck?
+                let pressed_count = driver.output.stats.get(KeyStateChange::Pressed);
+                let press_and_immediate_release = pressed_count == self.number_of_keys_pressed;
+                if press_and_immediate_release {
+                    // Reset the driver's space cadet buffer.
+                    driver.output.set_buffer(EventBuffer::new());
+
+                    // Then send a PRESS + RELEASE for the key.
+                    self.key_when_tapped.handle_event(driver, KeyStateChange::Pressed, l, idx);
+                    self.key_when_tapped.handle_event(driver, KeyStateChange::Released, l, idx);
+
+                } else {
+                    // Other keys were pressed since this key was pressed.
+                    // We trust the driver to handle the key we placed in the spacecadet buffer.
+                    // We'll send the closing release event for the modifier.
+                    self.modifier.handle_event(driver, KeyStateChange::Released, l, idx);
+                }
+            }
+            KeyStateChange::Held => {}
+        }
     }
 }
