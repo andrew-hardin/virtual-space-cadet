@@ -31,7 +31,7 @@ fn base_layer_keys() -> KeyCodeMatrix {
 }
 
 fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
-    let event_loop_rate = time::Duration::from_millis(1000 / hz_rate as u64);
+    let event_loop_rate = time::Duration::from_millis(1000 / u64::from(hz_rate));
     let mut warned = false;
     loop {
         let start = time::Instant::now();
