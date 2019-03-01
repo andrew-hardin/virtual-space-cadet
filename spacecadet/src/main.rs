@@ -1,9 +1,6 @@
 use std::time;
 use libspacecadet::*;
 
-const EVENT_LOOP_HZ_RATE: u64 = 200;
-const EVENT_LOOP_RATE: time::Duration = time::Duration::from_millis(1000 / EVENT_LOOP_HZ_RATE);
-
 fn get_keypad_matrix() -> KeyMatrix {
     return vec![
         vec![Some(KEY::KEY_NUMLOCK), Some(KEY::KEY_KPSLASH), Some(KEY::KEY_KPASTERISK)],
@@ -35,18 +32,19 @@ fn secondary_layer_keys() -> KeyCodeMatrix {
     ans
 }
 
-fn cyclic_executor<F>(action: &mut F) where F: FnMut() {
+fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
+    let event_loop_rate = time::Duration::from_millis(1000 / hz_rate as u64);
     let mut warned = false;
     loop {
         let start = time::Instant::now();
         action();
         let end = time::Instant::now();
         let elapsed = end - start;
-        if elapsed < EVENT_LOOP_RATE {
-            let remaining_time = EVENT_LOOP_RATE - elapsed;
+        if elapsed < event_loop_rate {
+            let remaining_time = event_loop_rate - elapsed;
             std::thread::sleep(remaining_time);
         } else if !warned {
-            println!("Event loop executing slower than {}hz.", EVENT_LOOP_HZ_RATE);
+            println!("Event loop executing slower than {}hz.", hz_rate);
             warned = true;
         }
     }
@@ -74,5 +72,5 @@ fn main() {
     f.add_layer(LayerAttributes { name: "second".to_string(), enabled: false }, secondary_layer_keys());
 
     let mut update = || tick(&mut f);
-    cyclic_executor(&mut update);
+    cyclic_executor(&mut update, 200);
 }
