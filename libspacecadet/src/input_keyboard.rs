@@ -2,7 +2,7 @@ use evdev_rs as evdev;
 use crate::KeyStats;
 
 
-/// A wrapper around an input keyboard device (e.g. /dev/input/event4).
+/// A wrapper around an input keyboard device (e.g. `/dev/input/event4`).
 pub struct InputKeyboard {
     _file_descriptor: std::fs::File,
     device: evdev::Device,
@@ -11,10 +11,8 @@ pub struct InputKeyboard {
 
 impl InputKeyboard {
 
-    /// Open an input keyboard.
-    ///
-    /// Behind the scenes we're opening a non-blocking file descriptor and
-    /// constructing a evdev device.
+    /// Open an input keyboard. Behind the scenes we're opening a
+    /// non-blocking file descriptor and constructing an evdev device.
     pub fn open(path: &str) -> InputKeyboard {
         use std::fs::OpenOptions;
         use std::os::unix::fs::OpenOptionsExt;
@@ -34,7 +32,7 @@ impl InputKeyboard {
         }
     }
 
-    /// (Non-blocking) read all pending events from the device.
+    /// (Non-blocking) Read all pending events from the device.
     /// Immediately returns an empty vector if no events happened.
     pub fn read_events(&mut self) -> Vec<evdev::InputEvent> {
         let mut ans= Vec::new();
