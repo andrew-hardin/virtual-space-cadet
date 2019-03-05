@@ -10,18 +10,22 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::EventBuffer;
 
-fn as_input_event(v: &KEY, state: KeyStateChange) -> evdev::InputEvent {
-    evdev::InputEvent {
-        time: evdev::TimeVal {
-            tv_usec: 0,
-            tv_sec: 0,
-        },
-        event_type : evdev::enums::EventType::EV_KEY,
-        event_code : evdev::enums::EventCode::EV_KEY(v.clone()),
-        value: state as i32
+pub struct KeyState(pub KEY, pub KeyStateChange);
+
+// Short hand for converting a key and state change into an InputEvent.
+impl Into<evdev::InputEvent> for KeyState {
+    fn into(self) -> evdev::InputEvent {
+        evdev::InputEvent {
+            time: evdev::TimeVal {
+                tv_usec: 0,
+                tv_sec: 0,
+            },
+            event_type : evdev::enums::EventType::EV_KEY,
+            event_code : evdev::enums::EventCode::EV_KEY(self.0),
+            value: self.1 as i32
+        }
     }
 }
-
 
 // A key code is our primary interface for keys.
 pub trait KeyCode {
@@ -41,7 +45,7 @@ impl KeyCode for BlankKey {
 
 impl KeyCode for KEY {
     fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection, _: Index2D) {
-        driver.output.send(as_input_event(self, state));
+        driver.output.send(KeyState(self.clone(), state).into());
     }
 }
 
@@ -72,7 +76,7 @@ impl KeyCode for ToggleLayerKey {
         if state == KeyStateChange::Pressed {
             // Toggle the layer, and mask the RELEASED event that'll be processed soon.
             l.toggle(&self.layer_name);
-            driver.matrix.set_block(BlockedKeyStates::new_block_presses_and_holds(), idx);
+            driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), idx);
         }
     }
 }
@@ -109,7 +113,7 @@ impl KeyCode for EnableLayerKey {
                 // This was a PRESSED, but a RELEASED event will soon follow.
                 // We don't want that event to hit the layer we just switched to.
                 // Temporarily block the release + hold events for this layer position.
-                driver.matrix.set_block(BlockedKeyStates::new_block_presses_and_holds(), idx);
+                driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), idx);
             }
             _ => {}
         }
@@ -192,7 +196,7 @@ impl KeyCode for OneShotLayer {
                 //
                 // ... but based on one man's opinion, the ergonomics are better if the layer
                 // switches on PRESS (especially when typing quickly).
-                driver.matrix.set_block(BlockedKeyStates::new_block_presses_and_holds(), idx);
+                driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), idx);
 
             }
             KeyStateChange::Released => { }

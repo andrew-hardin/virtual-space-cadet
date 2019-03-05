@@ -7,7 +7,7 @@ use crate::keys;
 pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
 pub type Index2D = (usize, usize);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum KeyStateChange {
     Released = 0,
     Pressed = 1,
@@ -56,29 +56,24 @@ impl BlockedKeyStates {
             blocked: [false; 3]
         }
     }
-    pub fn new_block_presses_and_holds() -> BlockedKeyStates {
+    pub fn new_block_release_and_hold() -> BlockedKeyStates {
         let mut ans = BlockedKeyStates::new();
         ans.blocked[KeyStateChange::Released as usize] = true;
         ans.blocked[KeyStateChange::Held as usize] = true;
         ans
     }
 
-    fn check(&mut self, input: Option<KeyStateChange>) -> Option<KeyStateChange> {
-        match input {
-            Some(s) => {
-                if s == KeyStateChange::Held && self.blocked[s as usize] {
-                    // Multiple holds are blocked.
-                    None
-                } else if self.blocked[s as usize] {
-                    // Press or releases are only blocked once
-                    // before all blocks are turned off.
-                    self.unblock();
-                    None
-                } else {
-                    Some(s)
-                }
-            }
-            None => None
+    fn check_if_blocked(&mut self, s: KeyStateChange) -> bool {
+        if s == KeyStateChange::Held && self.blocked[s as usize] {
+            // Multiple holds are blocked.
+            true
+        } else if self.blocked[s as usize] {
+            // Press or releases are only blocked once
+            // before all blocks are turned off.
+            self.unblock();
+            true
+        } else {
+            false
         }
     }
 
@@ -87,17 +82,23 @@ impl BlockedKeyStates {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum MatrixUpdateResult {
+    // The given event wasn't within the matrix.
+    Bypass,
+    // The event was redundant (e.g. pressing a pressed key).
+    Redundant(Index2D),
+    // The event caused a state to change.
+    StateChanged(Index2D, KeyStateChange),
+    // The event caused a state change, but it was blocked/masked.
+    Blocked
+}
+
 pub struct VirtualKeyboardMatrix {
     key_to_index: HashMap<evdev::enums::EV_KEY, Index2D>,
     dim: Index2D,
     state: StateMatrix,
     blocked: Vec<Vec<BlockedKeyStates>>
-}
-
-#[derive(Copy, Clone)]
-pub struct UpdateResult {
-    pub state_change: Option<KeyStateChange>,
-    pub location: Index2D,
 }
 
 impl VirtualKeyboardMatrix {
@@ -130,7 +131,7 @@ impl VirtualKeyboardMatrix {
         self.blocked[idx.0][idx.1] = block;
     }
 
-    pub fn update(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
+    pub fn update(&mut self, event: evdev::InputEvent) -> MatrixUpdateResult {
         // Update the matrix, then check if the event is blocked.
         // A blocked event returns a None...
         let ans = self.update_without_blocking(event);
@@ -139,7 +140,7 @@ impl VirtualKeyboardMatrix {
 
     // Update the matrix state by processing a single event.
     // Returns a bool indicating if the event was in the matrix.
-    fn update_without_blocking(&mut self, event: evdev::InputEvent) -> Option<UpdateResult> {
+    fn update_without_blocking(&mut self, event: evdev::InputEvent) -> MatrixUpdateResult {
 
         // Convert the event time into a friendly representation.
         let now = UNIX_EPOCH +
@@ -156,45 +157,43 @@ impl VirtualKeyboardMatrix {
                         // Great, the key corresponds to an index.
                         // Code the state is either pressed or not, then return true because
                         // the key was mapped to a matrix position.
-                        let val = match event.value {
+                        let is_pressed = match event.value {
                             0 => false,
                             _ => true
                         };
-                        Some(UpdateResult {
-                            state_change: self.state.set(*index, val, now),
-                            location: *index,
-                        })
+                        match self.state.set(*index, is_pressed, now) {
+                            Some(t) => MatrixUpdateResult::StateChanged(*index, t),
+                            None => MatrixUpdateResult::Redundant(*index)
+                        }
                     }
                     // Keys that aren't part of the matrix aren't handled.
-                    None => None
+                    None => MatrixUpdateResult::Bypass
                 }
             }
             // Non key event codes aren't handled.
-            _ => None
+            _ => MatrixUpdateResult::Bypass
         }
     }
 
-    pub fn detect_held_keys(&mut self, held_key_threshold: Duration) -> Vec<UpdateResult> {
-        // Detect held keys, then drop those that are "blocked".
-        self.detect_held_keys_without_blocking(held_key_threshold).iter()
-            .map(|x| self.check_blocking(Some(*x)))
-            .filter_map(|x| x)
+    pub fn detect_held_keys(&mut self, held_key_threshold: Duration, now: SystemTime) -> Vec<Index2D> {
+        self.detect_held_keys_without_blocking(held_key_threshold, now).iter()
+            .filter(|x| {
+                // Drop keys that are blocked (i.e. keep keys that aren't blocked).
+                !self.blocked[x.0][x.1].check_if_blocked(KeyStateChange::Held)
+            })
+            .cloned()
             .collect()
     }
 
-    fn detect_held_keys_without_blocking(&mut self, held_key_threshold: Duration) -> Vec<UpdateResult> {
+    fn detect_held_keys_without_blocking(&mut self, held_key_threshold: Duration, now: SystemTime) -> Vec<Index2D> {
         // Loop through every cell in the matrix and detect keys that
         // have been held for longer than the given threshold.
         let mut ans = Vec::new();
-        let now = SystemTime::now();
         for r in 0..self.dim.0 {
             for c in 0..self.dim.1 {
                 let idx = (r, c);
                 if self.state.is_held(idx, held_key_threshold, now) {
-                    ans.push(UpdateResult {
-                        state_change: Some(KeyStateChange::Held),
-                        location: idx,
-                    });
+                    ans.push(idx);
                     self.state.reset_key_press_time(idx,now);
                 }
             }
@@ -202,17 +201,16 @@ impl VirtualKeyboardMatrix {
         ans
     }
 
-    fn check_blocking(&mut self, item: Option<UpdateResult>) -> Option<UpdateResult> {
+    fn check_blocking(&mut self, item: MatrixUpdateResult) -> MatrixUpdateResult {
         match item {
-            Some(mut t) => {
-                // Some key state changes are "blocked", meaning that the virtual keyboard matrix
-                // doesn't report that they occurred. These blocked events are useful for special
-                // function keys, like those that swap layers on key PRESS. Blocking events prevents
-                // the key RELEASE from registering on the new layer.
-                t.state_change = self.blocked[t.location.0][t.location.1].check(t.state_change);
-                Some(t)
+            MatrixUpdateResult::StateChanged(idx, state) => {
+                if self.blocked[idx.0][idx.1].check_if_blocked(state) {
+                    MatrixUpdateResult::Blocked
+                } else {
+                    item
+                }
             }
-            None => item
+            _ => item
         }
     }
 }
@@ -256,5 +254,145 @@ impl StateMatrix {
 
     pub fn reset_key_press_time(&mut self, idx: Index2D, when: SystemTime) {
         self.last_pressed[idx.0][idx.1] = when;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_matrix_set() {
+        let mut m = StateMatrix::new((3, 5));
+
+        // Check the rules that govern whether or not a set yields something.
+        assert!(m.set((0, 0), false, SystemTime::now()).is_none());
+        assert_eq!(m.set((0, 0), true, SystemTime::now()).unwrap(), KeyStateChange::Pressed);
+        assert!(m.set((0, 0), true, SystemTime::now()).is_none());
+        assert_eq!(m.set((0, 0), false, SystemTime::now()).unwrap(), KeyStateChange::Released);
+    }
+
+    #[test]
+    fn state_matrix_check_held_keys() {
+
+        let mut m = StateMatrix::new((3, 5));
+        let reference = SystemTime::now();
+        let half_hold = Duration::from_millis(100);
+        let hold = Duration::from_millis(200);
+        let hold2 = Duration::from_millis(200 * 2);
+
+        // A key that was pressed + released shouldn't register as a hold.
+        m.set((0,0), true, reference);
+        m.set((0,0), false, reference + hold);
+        assert!(!m.is_held((0, 0), hold, reference));
+        assert!(!m.is_held((0, 0), hold, reference + half_hold));
+        assert!(!m.is_held((0, 0), hold, reference + hold2));
+
+        // A key that's pressed and held should register as a hold.
+        let pt = (1, 1);
+        m.set(pt, true, reference);
+        assert!(!m.is_held(pt, hold, reference + half_hold));
+        assert!(m.is_held(pt, hold, reference + hold));
+        assert!(m.is_held(pt, hold, reference + hold2));
+
+        // Release the key, and check that it no longer registers as a hold.
+        m.set(pt, false, reference + hold2);
+        assert!(!m.is_held(pt, hold, reference + hold2 + half_hold));
+    }
+
+    #[test]
+    #[should_panic]
+    fn key_state_change_conversion() {
+        assert_eq!(KeyStateChange::Pressed, 1.into());
+        assert_eq!(KeyStateChange::Released, 0.into());
+        assert_eq!(KeyStateChange::Held, 2.into());
+        let _panic: KeyStateChange = 10.into();
+    }
+
+    #[test]
+    fn block_key_states() {
+        let mut block = BlockedKeyStates::new_block_release_and_hold();
+
+        // Holds are blocked many times.
+        assert!(block.check_if_blocked(KeyStateChange::Held));
+        assert!(block.check_if_blocked(KeyStateChange::Held));
+
+        // Presses aren't held.
+        assert!(!block.check_if_blocked(KeyStateChange::Pressed));
+
+        // Release is blocked once, then all other blocks are disabled.
+        assert!(block.check_if_blocked(KeyStateChange::Released));
+        assert!(!block.check_if_blocked(KeyStateChange::Released));
+        assert!(!block.check_if_blocked(KeyStateChange::Held));
+        assert!(!block.check_if_blocked(KeyStateChange::Pressed));
+    }
+
+    fn get_simple_matrix() -> VirtualKeyboardMatrix {
+        VirtualKeyboardMatrix::new(vec![
+            vec![Some(keys::KEY::KEY_4), Some(keys::KEY::KEY_5), None],
+            vec![Some(keys::KEY::KEY_1), Some(keys::KEY::KEY_2), Some(keys::KEY::KEY_3)]
+        ])
+    }
+
+    // Short-hand for checking if v is a specific enum variant.
+    macro_rules! is_enum_variant {
+        ($v:expr, $p:pat) => (
+            if let $p = $v { true } else { false }
+        );
+    }
+
+    #[test]
+    fn virtual_keyboard_matrix_update() {
+
+        // Create a simple matrix, then setup a few press/release events
+        // that tests will use.
+        let mut mat = get_simple_matrix();
+        let press_9 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_9, KeyStateChange::Pressed).into();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        let release_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Released).into();
+
+        // Update with an event that's not part of the matrix.
+        assert!(is_enum_variant!(mat.update(press_9), MatrixUpdateResult::Bypass));
+
+        // Send a release event, even though the key is already released.
+        assert!(is_enum_variant!(mat.update(release_1.clone()), MatrixUpdateResult::Redundant((1, 0))));
+
+        // Press and release.
+        assert!(is_enum_variant!(mat.update(press_1.clone()), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+        assert!(is_enum_variant!(mat.update(release_1.clone()), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Released)));
+
+        // Send a press event, then turn on the block for the key.
+        // This is the classic layer-switching use case.
+        assert!(is_enum_variant!(mat.update(press_1.clone()), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+        mat.set_block(BlockedKeyStates::new_block_release_and_hold(), (1, 0));
+        assert!(is_enum_variant!(mat.update(release_1), MatrixUpdateResult::Blocked));
+
+        // The key shouldn't be blocked anymore.
+        assert!(is_enum_variant!(mat.update(press_1), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+    }
+
+    #[test]
+    fn virtual_keyboard_matrix_held_keys() {
+
+        // Grab a matrix and setup press + release events.
+        let mut mat = get_simple_matrix();
+        let mut press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+
+        // We're going to say the press happened at the UNIX_EPOCH.
+        press_1.time.tv_sec = 0;
+        press_1.time.tv_usec = 0;
+        assert!(is_enum_variant!(mat.update(press_1), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+
+        let hold = Duration::from_millis(200);
+        let pre_hold = UNIX_EPOCH + Duration::from_millis(100);
+        let post_hold = UNIX_EPOCH + Duration::from_millis(300);
+
+        assert_eq!(mat.detect_held_keys(hold, pre_hold).len(), 0);
+        assert_eq!(mat.detect_held_keys(hold, post_hold)[0], (1, 0));
+
+        // Check that blocked key holds don't register.
+        mat.set_block(BlockedKeyStates::new_block_release_and_hold(), (1, 0));
+        assert_eq!(mat.detect_held_keys(hold, pre_hold).len(), 0);
+        assert_eq!(mat.detect_held_keys(hold, post_hold).len(), 0);
     }
 }

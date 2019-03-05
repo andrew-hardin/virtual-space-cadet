@@ -2,7 +2,7 @@ use crate::input_keyboard::*;
 use crate::output_keyboard::*;
 use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 
 pub struct KeyboardDriver {
@@ -32,25 +32,19 @@ impl LayeredKeyboardDriver {
         // Check for any keys that have been held down and oppressed by the user.
         // TODO: relocate constant to a config/params object.
         let hold_down_threshold = Duration::from_millis(250);
-        let mut updates = self.driver.matrix.detect_held_keys(hold_down_threshold);
+        let now = SystemTime::now();
+        for idx in self.driver.matrix.detect_held_keys(hold_down_threshold, now) {
+            self.matrix_state_changed(idx, KeyStateChange::Pressed);
+        }
 
         // Handle every event coming in from the input device.
         for i in self.driver.input.read_events() {
             match self.driver.matrix.update(i.clone()) {
                 // The key was within the matrix - store the update for later.
-                Some(v) => { updates.push(v); }
-
-                // If the key wasn't in the matrix, bypass the logic that handles matrix
-                // state changes and forward directly to the output device.
-                None => { self.driver.output.send(i); }
-            }
-        }
-
-        // Loop through all updates and dispatch a matrix state changed event.
-        for v in updates {
-            match v.state_change {
-                Some(s) => { self.matrix_state_changed(v.location, s); }
-                None => {}
+                MatrixUpdateResult::Bypass => { self.driver.output.send(i); },
+                MatrixUpdateResult::Redundant(_idx) => {},
+                MatrixUpdateResult::StateChanged(idx, state) => { self.matrix_state_changed(idx, state); },
+                MatrixUpdateResult::Blocked => {}
             }
         }
     }
