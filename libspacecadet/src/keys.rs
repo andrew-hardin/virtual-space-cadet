@@ -10,9 +10,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::EventBuffer;
 
+/// Shorthand for a key and state change pair.
 pub struct KeyState(pub KEY, pub KeyStateChange);
 
-// Short hand for converting a key and state change into an InputEvent.
+/// Shorthand for converting a key and state change into an `evdev::InputEvent`.
 impl Into<evdev::InputEvent> for KeyState {
     fn into(self) -> evdev::InputEvent {
         evdev::InputEvent {
@@ -27,19 +28,21 @@ impl Into<evdev::InputEvent> for KeyState {
     }
 }
 
-// A key code is our primary interface for keys.
+
+/// The primary interface for custom keys (e.g. macros or layer toggles).
 pub trait KeyCode {
 
-    // Handle a state change event for this key.
+    /// React to a `KeyStateChange` event (e.g. the key was pressed).
     fn handle_event(&mut self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection, _: Index2D) { }
 
-    // Is the key transparent (i.e. that when stacking layers, the key is a pass-through
-    // to the key below it.
+    /// Check if the key is transparent (i.e. a pass-through to the key in the next lower layer).
     fn is_transparent(&self) -> bool { false }
 }
 
-pub struct BlankKey;
-impl KeyCode for BlankKey {
+
+/// A key that's transparent; a pass-through to the key below it in the layer hierarchy.
+pub struct TransparentKey;
+impl KeyCode for TransparentKey {
     fn is_transparent(&self) -> bool { true }
 }
 
@@ -49,8 +52,16 @@ impl KeyCode for KEY {
     }
 }
 
+/// A key that's the opposite of transparent; a no-op key that doesn't act on any events.
+pub struct OpaqueKey;
+impl KeyCode for OpaqueKey { }
+
+
+/// A key that's a collection of other simple keys that are quickly pressed sequentially.
 pub struct MacroKey {
+    /// When to play the macro (e.g. when the key is pressed or released).
     pub play_macro_when: KeyStateChange,
+    /// The collection of keys to play.
     pub keys: Vec<KEY>,
 }
 
@@ -66,8 +77,10 @@ impl KeyCode for MacroKey {
     }
 }
 
-// Imitating TG.
+
+/// A key that toggles a layer on or off.
 pub struct ToggleLayerKey {
+    /// Name of the layer to toggle.
     pub layer_name: String
 }
 
@@ -81,10 +94,12 @@ impl KeyCode for ToggleLayerKey {
     }
 }
 
-// Imitating MO.
+
+/// A key that enables a layer when pressed, then disable it when released.
 // TODO: enforce the "enabled layer must be a transparent key" constraint.
 //       this constraint is mentioned in some of the QMK documentation...
 pub struct MomentarilyEnableLayerKey {
+    /// Name of the layer to enable/disable.
     pub layer_name: String
 }
 
@@ -98,8 +113,10 @@ impl KeyCode for MomentarilyEnableLayerKey {
     }
 }
 
-// Imitating TO
+
+/// A key than enables a layer.
 pub struct EnableLayerKey {
+    /// Name of the layer to enable.
     pub layer_name: String
 }
 
@@ -120,7 +137,8 @@ impl KeyCode for EnableLayerKey {
     }
 }
 
-// Imitating LT.
+
+/// A key than enables a layer when held, but emits a simple key when pressed + released quickly.
 pub struct HoldEnableLayerPressKey {
     layer_name: String,
     key: KEY,
@@ -128,6 +146,7 @@ pub struct HoldEnableLayerPressKey {
 }
 
 impl HoldEnableLayerPressKey {
+    /// Create a new key by specifying the layer to change on hold and the key to emit when pressed + released.
     pub fn new(layer_name: &str, key: KEY) -> HoldEnableLayerPressKey {
         HoldEnableLayerPressKey {
             layer_name: layer_name.to_string(),
@@ -166,7 +185,8 @@ impl KeyCode for HoldEnableLayerPressKey {
     }
 }
 
-// Imitate OSL.
+
+/// A key than enables a layer when pressed and disables the layer after the next key is pressed + released.
 pub struct OneShotLayer {
     pub layer_name: String
 }
@@ -205,6 +225,9 @@ impl KeyCode for OneShotLayer {
     }
 }
 
+
+/// A key wrapped with a modifier. The modifier is pressed,
+/// the `KeyCode` is pressed and released, then the modifier is released.
 pub struct ModifierWrappedKey {
     pub key: Box<KeyCode>,
     pub modifier: KEY,
@@ -228,6 +251,10 @@ impl KeyCode for ModifierWrappedKey {
     }
 }
 
+
+/// A key that acts like a modifier when used with another key,
+/// but acts like a simple key when tapped. The classic example is
+/// `LEFT_SHIFT` when held with another key, but `(` when tapped.
 pub struct SpaceCadet {
     key_when_tapped: Box<KeyCode>,
     modifier: KEY,

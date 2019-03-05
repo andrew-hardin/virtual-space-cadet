@@ -4,10 +4,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::keys;
 
 
+/// A MxN matrix of key codes. None can be used to encode matrix
+/// positions without keys.
 pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
+
+/// Simple (row, column) index.
 pub type Index2D = (usize, usize);
 
-/// A key can undergo three state changes: press, release, and hold.
+/// A key can undergo three state changes: `Pressed`, `Released`, or `Held`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum KeyStateChange {
     Released = 0,

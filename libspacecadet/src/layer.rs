@@ -14,7 +14,7 @@ impl KeyCodeMatrix {
         for _r in 0..dim.0 {
             let mut row: Vec<Box<KeyCode>> = Vec::with_capacity(dim.1);
             for _c in 0..dim.1 {
-                row.push(Box::new(BlankKey {}));
+                row.push(Box::new(TransparentKey {}));
             }
             codes.push(row);
         }

@@ -117,6 +117,7 @@ impl OutputKeyboard {
 
 type CEventCodesToEvents = HashMap<c_int, HashMap<c_int, uinput::event::Event>>;
 
+
 struct EvdevToUinput {
     // Maps a kind -> [map a code -> uinput event]
     kind_to_code_to_event: CEventCodesToEvents
