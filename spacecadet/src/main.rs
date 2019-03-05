@@ -56,7 +56,7 @@ fn main() {
 
     let keyboard = KeyboardDriver {
         input: InputKeyboard::open("/dev/input/event4"),
-        output: OutputKeyboard::new(),
+        output: OutputKeyboard::new(None),
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
     };
 
