@@ -48,10 +48,6 @@ fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
     }
 }
 
-fn tick(d: &mut LayeredKeyboardDriver) {
-    d.clock_tick();
-}
-
 fn main() {
 
     let keyboard = KeyboardDriver {
@@ -68,6 +64,6 @@ fn main() {
 
     f.add_layer(LayerAttributes { name: "base".to_string(), enabled: true }, base_layer_keys());
 
-    let mut update = || tick(&mut f);
+    let mut update = || f.clock_tick();
     cyclic_executor(&mut update, 200);
 }
