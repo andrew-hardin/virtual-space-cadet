@@ -195,3 +195,57 @@ impl EvdevToUinput {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::*;
+    use uinput::event::{Kind, Code};
+
+    #[test]
+    fn event_buffer_defaults() {
+        // Check the event buffer default constructor.
+        let mut item = EventBuffer::new();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        assert_eq!(item.add(press_1).len(), 1);
+    }
+
+    #[test]
+    fn event_buffer_spacecadet() {
+        let mut item = EventBuffer::new_spacecadet();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        // Send two keys, and return the full buffer on the second.
+        assert_eq!(item.add(press_1.clone()).len(), 0);
+        assert_eq!(item.add(press_1.clone()).len(), 2);
+        // Buffer should be disabled.
+        assert_eq!(item.add(press_1).len(), 1);
+    }
+
+    #[test]
+    fn evdev_to_uinput_check_one() {
+        // Just check that KEY_1 is converted to the correct event.
+        let item = EvdevToUinput::new();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        let converted = item.convert(press_1);
+        assert!(converted.is_some());
+        let converted = converted.unwrap();
+        assert_eq!(converted.kind(), 1);
+        assert_eq!(converted.code(), 2);
+    }
+
+    #[test]
+    fn evdev_to_uniput_unsupported_value() {
+        // Check that non-key values map to none.
+        let key = evdev::InputEvent {
+            time: evdev::TimeVal {
+                tv_usec: 0,
+                tv_sec: 0,
+            },
+            event_type : evdev::enums::EventType::EV_SYN,
+            event_code : evdev::enums::EventCode::EV_SYN(evdev::enums::EV_SYN::SYN_REPORT),
+            value: 0 as i32
+        };
+        let item = EvdevToUinput::new();
+        assert!(item.convert(key).is_none());
+    }
+}
