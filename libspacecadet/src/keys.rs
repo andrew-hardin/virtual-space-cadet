@@ -5,13 +5,13 @@ use crate::virtual_keyboard_matrix::Index2D;
 use crate::keyboard_driver::KeyboardDriver;
 use crate::layer::ScheduledLayerEvent;
 
-pub use evdev::enums::EV_KEY as KEY;
+pub use evdev::enums::EV_KEY as SimpleKey;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::EventBuffer;
 
 /// Shorthand for a key and state change pair.
-pub struct KeyState(pub KEY, pub KeyStateChange);
+pub struct KeyState(pub SimpleKey, pub KeyStateChange);
 
 /// Shorthand for converting a key and state change into an `evdev::InputEvent`.
 impl Into<evdev::InputEvent> for KeyState {
@@ -46,7 +46,7 @@ impl KeyCode for TransparentKey {
     fn is_transparent(&self) -> bool { true }
 }
 
-impl KeyCode for KEY {
+impl KeyCode for SimpleKey {
     fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection, _: Index2D) {
         driver.output.send(KeyState(self.clone(), state).into());
     }
@@ -62,7 +62,7 @@ pub struct MacroKey {
     /// When to play the macro (e.g. when the key is pressed or released).
     pub play_macro_when: KeyStateChange,
     /// The collection of keys to play.
-    pub keys: Vec<KEY>,
+    pub keys: Vec<SimpleKey>,
 }
 
 impl KeyCode for MacroKey {
@@ -141,13 +141,13 @@ impl KeyCode for EnableLayerKey {
 /// A key than enables a layer when held, but emits a simple key when pressed + released quickly.
 pub struct HoldEnableLayerPressKey {
     layer_name: String,
-    key: KEY,
+    key: SimpleKey,
     pressed_at: SystemTime,
 }
 
 impl HoldEnableLayerPressKey {
     /// Create a new key by specifying the layer to change on hold and the key to emit when pressed + released.
-    pub fn new(layer_name: &str, key: KEY) -> HoldEnableLayerPressKey {
+    pub fn new(layer_name: &str, key: SimpleKey) -> HoldEnableLayerPressKey {
         HoldEnableLayerPressKey {
             layer_name: layer_name.to_string(),
             key,
@@ -230,7 +230,7 @@ impl KeyCode for OneShotLayer {
 /// the `KeyCode` is pressed and released, then the modifier is released.
 pub struct ModifierWrappedKey {
     pub key: Box<KeyCode>,
-    pub modifier: KEY,
+    pub modifier: SimpleKey,
 }
 
 impl KeyCode for ModifierWrappedKey {
@@ -257,16 +257,16 @@ impl KeyCode for ModifierWrappedKey {
 /// `LEFT_SHIFT` when held with another key, but `(` when tapped.
 pub struct SpaceCadet {
     key_when_tapped: Box<KeyCode>,
-    modifier: KEY,
+    modifier: SimpleKey,
     number_of_keys_pressed: u32
 }
 
 impl SpaceCadet {
-    pub fn new_from_key(when_tapped: KEY, modifier: KEY) -> SpaceCadet {
+    pub fn new_from_key(when_tapped: SimpleKey, modifier: SimpleKey) -> SpaceCadet {
         SpaceCadet::new(Box::new(when_tapped), modifier)
     }
 
-    pub fn new(when_tapped: Box<KeyCode>, modifier: KEY) -> SpaceCadet {
+    pub fn new(when_tapped: Box<KeyCode>, modifier: SimpleKey) -> SpaceCadet {
         SpaceCadet {
             key_when_tapped: when_tapped,
             modifier,

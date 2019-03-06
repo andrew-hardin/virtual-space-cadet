@@ -6,7 +6,7 @@ use crate::keys;
 
 /// A MxN matrix of key codes. None can be used to encode matrix
 /// positions without keys.
-pub type KeyMatrix = Vec<Vec<Option<keys::KEY>>>;
+pub type KeyMatrix = Vec<Vec<Option<keys::SimpleKey>>>;
 
 /// Simple (row, column) index.
 pub type Index2D = (usize, usize);
@@ -369,8 +369,8 @@ mod tests {
 
     fn get_simple_matrix() -> VirtualKeyboardMatrix {
         VirtualKeyboardMatrix::new(vec![
-            vec![Some(keys::KEY::KEY_4), Some(keys::KEY::KEY_5), None],
-            vec![Some(keys::KEY::KEY_1), Some(keys::KEY::KEY_2), Some(keys::KEY::KEY_3)]
+            vec![Some(keys::SimpleKey::KEY_4), Some(keys::SimpleKey::KEY_5), None],
+            vec![Some(keys::SimpleKey::KEY_1), Some(keys::SimpleKey::KEY_2), Some(keys::SimpleKey::KEY_3)]
         ])
     }
 
@@ -387,9 +387,9 @@ mod tests {
         // Create a simple matrix, then setup a few press/release events
         // that tests will use.
         let mut mat = get_simple_matrix();
-        let press_9 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_9, KeyStateChange::Pressed).into();
-        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
-        let release_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Released).into();
+        let press_9 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_9, KeyStateChange::Pressed).into();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Released).into();
 
         // Update with an event that's not part of the matrix.
         assert!(is_enum_variant!(mat.update(press_9), MatrixUpdateResult::Bypass));
@@ -416,7 +416,7 @@ mod tests {
 
         // Grab a matrix and setup press + release events.
         let mut mat = get_simple_matrix();
-        let mut press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        let mut press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
 
         // We're going to say the press happened at the UNIX_EPOCH.
         press_1.time.tv_sec = 0;

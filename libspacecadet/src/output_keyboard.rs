@@ -206,14 +206,14 @@ mod tests {
     fn event_buffer_defaults() {
         // Check the event buffer default constructor.
         let mut item = EventBuffer::new();
-        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
         assert_eq!(item.add(press_1).len(), 1);
     }
 
     #[test]
     fn event_buffer_spacecadet() {
         let mut item = EventBuffer::new_spacecadet();
-        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
         // Send two keys, and return the full buffer on the second.
         assert_eq!(item.add(press_1.clone()).len(), 0);
         assert_eq!(item.add(press_1.clone()).len(), 2);
@@ -225,7 +225,7 @@ mod tests {
     fn evdev_to_uinput_check_one() {
         // Just check that KEY_1 is converted to the correct event.
         let item = EvdevToUinput::new();
-        let press_1 : evdev::InputEvent = keys::KeyState(keys::KEY::KEY_1, KeyStateChange::Pressed).into();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
         let converted = item.convert(press_1);
         assert!(converted.is_some());
         let converted = converted.unwrap();

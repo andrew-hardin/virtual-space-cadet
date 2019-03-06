@@ -3,30 +3,30 @@ use libspacecadet::*;
 
 fn get_keypad_matrix() -> KeyMatrix {
     return vec![
-        vec![Some(KEY::KEY_ESC)],
-        vec![Some(KEY::KEY_TAB)],
-        vec![Some(KEY::KEY_CAPSLOCK)],
-        vec![Some(KEY::KEY_LEFTSHIFT)],
-        vec![Some(KEY::KEY_RIGHTSHIFT)],
+        vec![Some(SimpleKey::KEY_ESC)],
+        vec![Some(SimpleKey::KEY_TAB)],
+        vec![Some(SimpleKey::KEY_CAPSLOCK)],
+        vec![Some(SimpleKey::KEY_LEFTSHIFT)],
+        vec![Some(SimpleKey::KEY_RIGHTSHIFT)],
     ]
 }
 
 fn base_layer_keys() -> KeyCodeMatrix {
     let left_paren = Box::new(ModifierWrappedKey {
-        key: Box::new(KEY::KEY_9),
-        modifier: KEY::KEY_LEFTSHIFT
+        key: Box::new(SimpleKey::KEY_9),
+        modifier: SimpleKey::KEY_LEFTSHIFT
     });
     let right_paren = Box::new(ModifierWrappedKey {
-        key: Box::new(KEY::KEY_9),
-        modifier: KEY::KEY_RIGHTSHIFT
+        key: Box::new(SimpleKey::KEY_9),
+        modifier: SimpleKey::KEY_RIGHTSHIFT
     });
 
     let mut ans = KeyCodeMatrix::new((5, 1));
-    ans.codes[1][0] = Box::new(KEY::KEY_CAPSLOCK);
-    ans.codes[1][0] = Box::new(KEY::KEY_ESC);
-    ans.codes[2][0] = Box::new(KEY::KEY_TAB);
-    ans.codes[3][0] = Box::new(SpaceCadet::new(left_paren, KEY::KEY_LEFTSHIFT));
-    ans.codes[4][0] = Box::new(SpaceCadet::new(right_paren, KEY::KEY_RIGHTSHIFT));
+    ans.codes[1][0] = Box::new(SimpleKey::KEY_CAPSLOCK);
+    ans.codes[1][0] = Box::new(SimpleKey::KEY_ESC);
+    ans.codes[2][0] = Box::new(SimpleKey::KEY_TAB);
+    ans.codes[3][0] = Box::new(SpaceCadet::new(left_paren, SimpleKey::KEY_LEFTSHIFT));
+    ans.codes[4][0] = Box::new(SpaceCadet::new(right_paren, SimpleKey::KEY_RIGHTSHIFT));
     ans
 }
 
