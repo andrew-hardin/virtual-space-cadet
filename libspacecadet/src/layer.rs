@@ -23,6 +23,15 @@ impl KeyCodeMatrix {
             codes,
         }
     }
+
+    pub fn dim(&self) -> Index2D {
+        let rows = self.codes.len();
+        if rows > 0 {
+            (rows, self.codes[0].len())
+        } else {
+            (rows, 0)
+        }
+    }
 }
 
 pub struct LayerAttributes {
@@ -32,7 +41,7 @@ pub struct LayerAttributes {
 
 pub struct LayerCollection {
     pub attributes: Vec<LayerAttributes>,
-    name_to_idx: HashMap<String, usize>,
+    pub name_to_idx: HashMap<String, usize>,
     event_layer_callbacks: Vec<ScheduledLayerEvent>
 }
 

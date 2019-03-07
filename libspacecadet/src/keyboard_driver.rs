@@ -77,6 +77,74 @@ impl LayeredKeyboardDriver {
         }
         println!("Reached bottom of stack without hitting a key.");
     }
+
+    /// Verify that the driver layers are compatible.
+    pub fn verify(&self) -> Result<(), String> {
+        self.verify_dims()?;
+        self.verify_key_constraints()?;
+        Ok(())
+    }
+
+    /// Verify that matrix and layers share the same dimensions.
+    fn verify_dims(&self) -> Result<(), String> {
+        let dim = self.driver.matrix.dim();
+        for i in self.layered_codes.iter().enumerate() {
+            let other_dim = i.1.dim();
+            if dim != other_dim {
+                return Err(format!("Mismatched matrices- the virtual matrix is {}x{}, but layer \"{}\" (#{}) is {}x{}.",
+                    dim.0, dim.1,
+                    i.0, self.layer_attributes.attributes[i.0].name,
+                    other_dim.0, other_dim.1));
+            }
+        }
+        Ok(())
+    }
+
+    /// Verify that per-key constraints are satisfied.
+    fn verify_key_constraints(&self) -> Result<(), String> {
+        // Loop through every key in every layer.
+        // Verify every constraint- quit early if a constraint is violated.
+        for i in self.layered_codes.iter().enumerate() {
+            for r in i.1.codes.iter().enumerate() {
+                for c in r.1.iter().enumerate() {
+                    let idx = (r.0, c.0);
+                    for rule in c.1.get_constraints() {
+                        self.verify_key_constraint(rule, idx, &self.layer_attributes.attributes[i.0].name)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Verify that a single key constraint is met.
+    fn verify_key_constraint(&self, constraint: KeyConstraint, idx: Index2D, parent_layer: &str) -> Result<(), String>{
+        match constraint {
+            KeyConstraint::LayerExists(name) => {
+                if !self.layer_attributes.name_to_idx.get(&name).is_some() {
+                    Err(format!(
+                        "Key constraint violated: the key at {}x{} on layer \"{}\" references \"{}\",\
+                         but no layer exists with that name.",
+                        idx.0, idx.1, parent_layer, name))
+                } else {
+                    Ok(())
+                }
+            }
+            KeyConstraint::KeyOnOtherLayerIsTransparent(name) => {
+                let layer_idx = *self.layer_attributes.name_to_idx.get(&name).unwrap();
+                let other_key = &self.layered_codes[layer_idx].codes[idx.0][idx.1];
+                if !other_key.is_transparent() {
+                    Err(format!(
+                        "Key constraint violated: the key at {}x{} on layer \"{}\" requires the key \
+                         at {}x{} on \"{}\" to be transparent.",
+                        idx.0, idx.1, parent_layer,
+                        idx.0, idx.1, name))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
 }
 
 

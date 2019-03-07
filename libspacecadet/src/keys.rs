@@ -35,6 +35,14 @@ impl Into<evdev::InputEvent> for KeyState {
     }
 }
 
+/// Contextual constraints that ensure a key's behavior acts as expected.
+pub enum KeyConstraint {
+    /// The key on the other layer must be transparent.
+    KeyOnOtherLayerIsTransparent(String),
+    /// A layer with the given name must exist.
+    LayerExists(String)
+}
+
 
 /// The primary interface for custom keys (e.g. macros or layer toggles).
 pub trait KeyCode {
@@ -44,6 +52,11 @@ pub trait KeyCode {
 
     /// Check if the key is transparent (i.e. a pass-through to the key in the next lower layer).
     fn is_transparent(&self) -> bool { false }
+
+    /// Get any constraints the key may have.
+    fn get_constraints(&self) -> Vec<KeyConstraint> {
+        vec![]
+    }
 }
 
 
@@ -80,7 +93,6 @@ impl KeyCode for MacroKey {
                 i.handle_event(ctx, KeyStateChange::Released);
             }
         }
-
     }
 }
 
@@ -99,12 +111,13 @@ impl KeyCode for ToggleLayerKey {
             ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
         }
     }
+    fn get_constraints(&self) -> Vec<KeyConstraint> {
+        vec![KeyConstraint::LayerExists(self.layer_name.clone())]
+    }
 }
 
 
 /// A key that enables a layer when pressed, then disable it when released.
-// TODO: enforce the "enabled layer must be a transparent key" constraint.
-//       this constraint is mentioned in some of the QMK documentation...
 pub struct MomentarilyEnableLayerKey {
     /// Name of the layer to enable/disable.
     pub layer_name: String
@@ -117,6 +130,12 @@ impl KeyCode for MomentarilyEnableLayerKey {
             KeyStateChange::Released => { ctx.layers.set(&self.layer_name, false); }
             KeyStateChange::Pressed => { ctx.layers.set(&self.layer_name, true); }
         }
+    }
+    fn get_constraints(&self) -> Vec<KeyConstraint> {
+        vec![
+            KeyConstraint::LayerExists(self.layer_name.clone()),
+            KeyConstraint::KeyOnOtherLayerIsTransparent(self.layer_name.clone())
+        ]
     }
 }
 
@@ -141,6 +160,9 @@ impl KeyCode for EnableLayerKey {
             }
             _ => {}
         }
+    }
+    fn get_constraints(&self) -> Vec<KeyConstraint> {
+        vec![KeyConstraint::LayerExists(self.layer_name.clone())]
     }
 }
 
@@ -196,7 +218,9 @@ impl KeyCode for HoldEnableLayerPressKey {
                 }
             }
         }
-
+    }
+    fn get_constraints(&self) -> Vec<KeyConstraint> {
+        vec![KeyConstraint::LayerExists(self.layer_name.clone())]
     }
 }
 
@@ -236,7 +260,9 @@ impl KeyCode for OneShotLayer {
             }
             KeyStateChange::Released => { }
         }
-
+    }
+    fn get_constraints(&self) -> Vec<KeyConstraint> {
+        vec![KeyConstraint::LayerExists(self.layer_name.clone())]
     }
 }
 

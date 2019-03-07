@@ -154,6 +154,10 @@ impl VirtualKeyboardMatrix {
         }
     }
 
+    pub fn dim(&self) -> Index2D {
+        self.dim
+    }
+
     /// Block key events at the given index.
     pub fn set_block(&mut self, block: BlockedKeyStates, idx: Index2D) {
         self.blocked[idx.0][idx.1] = block;
