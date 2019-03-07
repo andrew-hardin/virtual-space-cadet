@@ -55,6 +55,11 @@ impl KeyStats {
     pub fn get(&self, v: KeyStateChange) -> u32 {
         self.values[v as usize]
     }
+
+    /// Set the number of times a state change was seen.
+    pub fn set(&mut self, v: KeyStateChange, i: u32) {
+        self.values[v as usize] = i;
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -154,6 +159,7 @@ impl VirtualKeyboardMatrix {
         }
     }
 
+    /// Get the dimensions of the matrix.
     pub fn dim(&self) -> Index2D {
         self.dim
     }
