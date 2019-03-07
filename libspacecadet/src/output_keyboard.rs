@@ -100,7 +100,7 @@ impl OutputKeyboard {
             .create().unwrap();
 
         OutputKeyboard {
-            device: device,
+            device,
             evdev_to_uinput: EvdevToUinput::new(),
             event_buffer: EventBuffer::new(),
             stats: KeyStats::new(),
