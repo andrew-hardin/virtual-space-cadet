@@ -331,8 +331,11 @@ impl KeyCode for SpaceCadet {
                 // for new key events. Key interception is well outside our permissions, so we'll
                 // rely on the driver to fill a two event buffer (modifier + some other key).
                 ctx.driver.output.set_buffer(EventBuffer::new_spacecadet());
-                self.modifier.handle_event(ctx, KeyStateChange::Pressed);
+
+                // Record how many keys have been pressed, then send a pressed event.
+                // Because the buffer is active, this press won't increment any stats yet.
                 self.number_of_keys_pressed = ctx.driver.output.stats.get(KeyStateChange::Pressed);
+                self.modifier.handle_event(ctx, KeyStateChange::Pressed);
             }
             KeyStateChange::Released => {
                 // Was the key pressed and released without any other keys being struck?
@@ -340,6 +343,7 @@ impl KeyCode for SpaceCadet {
                 let press_and_immediate_release = pressed_count == self.number_of_keys_pressed;
                 if press_and_immediate_release {
                     // Reset the driver's space cadet buffer.
+                    // Recall that this will clear a "modifier pressed" event.
                     ctx.driver.output.set_buffer(EventBuffer::new());
 
                     // Then send a PRESS + RELEASE for the key.

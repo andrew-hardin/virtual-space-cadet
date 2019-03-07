@@ -109,7 +109,7 @@ impl OutputKeyboard {
 
     /// Configure the output keyboard to buffer events.
     pub fn set_buffer(&mut self, buffer: EventBuffer) {
-        // TODO: what if the buffer already has keys?
+        // Concern: what if the buffer is holding keys?
         self.event_buffer = buffer;
     }
 
