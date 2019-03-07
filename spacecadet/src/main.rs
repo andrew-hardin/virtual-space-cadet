@@ -17,7 +17,7 @@ fn base_layer_keys() -> KeyCodeMatrix {
         modifier: SimpleKey::KEY_LEFTSHIFT
     });
     let right_paren = Box::new(ModifierWrappedKey {
-        key: Box::new(SimpleKey::KEY_9),
+        key: Box::new(SimpleKey::KEY_0),
         modifier: SimpleKey::KEY_RIGHTSHIFT
     });
 
