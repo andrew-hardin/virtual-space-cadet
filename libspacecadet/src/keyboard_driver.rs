@@ -5,15 +5,14 @@ use crate::layer::*;
 use crate::keys::*;
 use std::time::{Duration, SystemTime};
 
-
-
-
+/// An input keyboard, virtual matrix, and output keyboard.
 pub struct KeyboardDriver {
     pub input: InputKeyboard,
     pub output: OutputKeyboard,
     pub matrix: VirtualKeyboardMatrix,
 }
 
+/// A keyboard driver with layers of keys.
 pub struct LayeredKeyboardDriver {
     pub driver : KeyboardDriver,
     pub layered_codes: Vec<KeyCodeMatrix>,
@@ -22,6 +21,7 @@ pub struct LayeredKeyboardDriver {
 
 impl LayeredKeyboardDriver {
 
+    /// Add a layer to the driver by specify its attributes and code matrix.
     pub fn add_layer(&mut self, attr: LayerAttributes, codes: KeyCodeMatrix) {
         self.layer_attributes.add(attr);
         self.layered_codes.push(codes);

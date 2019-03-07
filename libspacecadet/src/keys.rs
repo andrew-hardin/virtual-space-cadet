@@ -150,16 +150,23 @@ pub struct HoldEnableLayerPressKey {
     layer_name: String,
     key: SimpleKey,
     pressed_at: SystemTime,
+    hold_threshold: Duration,
 }
 
 impl HoldEnableLayerPressKey {
     /// Create a new key by specifying the layer to change on hold and the key to emit when pressed + released.
-    pub fn new(layer_name: &str, key: SimpleKey) -> HoldEnableLayerPressKey {
+    pub fn new(layer_name: &str, key: SimpleKey, hold_threshold: Duration) -> HoldEnableLayerPressKey {
         HoldEnableLayerPressKey {
             layer_name: layer_name.to_string(),
             key,
-            pressed_at: UNIX_EPOCH
+            pressed_at: UNIX_EPOCH,
+            hold_threshold
         }
+    }
+
+    fn is_held_long_enough(&self) -> bool {
+        let delta = SystemTime::now().duration_since(self.pressed_at).unwrap();
+        delta > self.hold_threshold
     }
 }
 
@@ -167,20 +174,21 @@ impl KeyCode for HoldEnableLayerPressKey {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Held => {
-                /*
-                TODO: Should we toggle the layer if it's been held long enough, but it hasn't yet been released?
-                      Wouldn't that cause the release event to be processed on a different layer?
-                      Maybe a shadow sink would gobble up the release event from this position?
-                */
+                // The keyboard driver determined the key was held - but was it held long enough?
+                // If so, enable the layer.
+                // Then block any future holds and the next release on the new layer. This helps
+                // prevent phantom "releases" after a key switches to a different layer but
+                // hasn't been released yet.
+                if self.is_held_long_enough() {
+                    ctx.layers.set(&self.layer_name, true);
+                    ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
+                }
             }
             KeyStateChange::Pressed => {
                 self.pressed_at = SystemTime::now();
             }
             KeyStateChange::Released => {
-                let delta = SystemTime::now().duration_since(self.pressed_at).unwrap();
-                // TODO: extract hold duration parameter...
-                let was_held = delta > Duration::from_millis(200);
-                if was_held {
+                if self.is_held_long_enough() {
                     ctx.layers.set(&self.layer_name, true);
                 } else {
                     self.key.handle_event(ctx, KeyStateChange::Pressed);
