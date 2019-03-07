@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime};
 
 /// An input keyboard, virtual matrix, and output keyboard.
 pub struct KeyboardDriver {
-    pub input: InputKeyboard,
+    pub input: Box<InputKeyboard>,
     pub output: OutputKeyboard,
     pub matrix: VirtualKeyboardMatrix,
 }

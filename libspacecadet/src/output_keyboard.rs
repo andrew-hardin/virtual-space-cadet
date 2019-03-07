@@ -3,6 +3,62 @@ use std::collections::HashMap;
 use std::os::raw::c_int;
 use crate::KeyStats;
 
+
+/// A wrapper around a uinput device.
+pub struct OutputKeyboard {
+    device: uinput::Device,
+    evdev_to_uinput: EvdevToUinput,
+    event_buffer: EventBuffer,
+    pub stats: KeyStats
+}
+
+impl OutputKeyboard {
+    /// Create a new uinput device with an optional name.
+    pub fn new(device_name: Option<String>) -> OutputKeyboard {
+        let name = match device_name {
+            Some(t) => t,
+            None => "spacecadet".to_string()
+        };
+        let device = uinput::default().unwrap()
+            .name(name).unwrap()
+            .event(uinput::event::Keyboard::All).unwrap()
+            .create().unwrap();
+
+        OutputKeyboard {
+            device,
+            evdev_to_uinput: EvdevToUinput::new(),
+            event_buffer: EventBuffer::new(),
+            stats: KeyStats::new(),
+        }
+    }
+
+    /// Configure the output keyboard to buffer events.
+    pub fn set_buffer(&mut self, buffer: EventBuffer) {
+        // Concern: what if the buffer is holding keys?
+        self.event_buffer = buffer;
+    }
+
+    /// Send an event to the output keyboard with buffering.
+    pub fn send(&mut self, e: evdev::InputEvent) {
+        // Add the item to the buffer, then send any items that the buffer returned.
+        for item in self.event_buffer.add(e) {
+            self.send_unbuffered(item);
+        }
+    }
+
+    /// Send an event to the output keyboard without buffering.
+    pub fn send_unbuffered(&mut self, e: evdev::InputEvent) {
+        // evdev event -> uinput event -> device command.
+        let code = e.value;
+        self.stats.increment(code.into());
+        let e = self.evdev_to_uinput.convert(e).unwrap();
+        println!("sending {:?} (val = {})", e, code);
+        self.device.send(e, code).unwrap();
+        self.device.synchronize().unwrap();
+    }
+}
+
+
 /// The policy that governs when keys are sent out of the buffer.
 #[derive(PartialEq, Debug)]
 pub enum BufferSendKeysWhen {
@@ -76,60 +132,6 @@ impl EventBuffer {
 
     fn is_full(&self) -> bool {
         return self.buffer.capacity() == self.buffer.len()
-    }
-}
-
-/// A wrapper around a uinput device.
-pub struct OutputKeyboard {
-    device: uinput::Device,
-    evdev_to_uinput: EvdevToUinput,
-    event_buffer: EventBuffer,
-    pub stats: KeyStats
-}
-
-impl OutputKeyboard {
-    /// Create a new uinput device with an optional name.
-    pub fn new(device_name: Option<String>) -> OutputKeyboard {
-        let name = match device_name {
-            Some(t) => t,
-            None => "spacecadet".to_string()
-        };
-        let device = uinput::default().unwrap()
-            .name(name).unwrap()
-            .event(uinput::event::Keyboard::All).unwrap()
-            .create().unwrap();
-
-        OutputKeyboard {
-            device,
-            evdev_to_uinput: EvdevToUinput::new(),
-            event_buffer: EventBuffer::new(),
-            stats: KeyStats::new(),
-        }
-    }
-
-    /// Configure the output keyboard to buffer events.
-    pub fn set_buffer(&mut self, buffer: EventBuffer) {
-        // Concern: what if the buffer is holding keys?
-        self.event_buffer = buffer;
-    }
-
-    /// Send an event to the output keyboard with buffering.
-    pub fn send(&mut self, e: evdev::InputEvent) {
-        // Add the item to the buffer, then send any items that the buffer returned.
-        for item in self.event_buffer.add(e) {
-            self.send_unbuffered(item);
-        }
-    }
-
-    /// Send an event to the output keyboard without buffering.
-    pub fn send_unbuffered(&mut self, e: evdev::InputEvent) {
-        // evdev event -> uinput event -> device command.
-        let code = e.value;
-        self.stats.increment(code.into());
-        let e = self.evdev_to_uinput.convert(e).unwrap();
-        println!("sending {:?} (val = {})", e, code);
-        self.device.send(e, code).unwrap();
-        self.device.synchronize().unwrap();
     }
 }
 

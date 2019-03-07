@@ -51,7 +51,7 @@ fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
 fn main() {
 
     let keyboard = KeyboardDriver {
-        input: InputKeyboard::open("/dev/input/event4"),
+        input: Box::new(EvdevKeyboard::open("/dev/input/event4")),
         output: OutputKeyboard::new(None),
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
     };
