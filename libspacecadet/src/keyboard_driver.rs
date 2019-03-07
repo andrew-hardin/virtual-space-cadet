@@ -2,7 +2,10 @@ use crate::input_keyboard::*;
 use crate::output_keyboard::*;
 use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
+use crate::keys::*;
 use std::time::{Duration, SystemTime};
+
+
 
 
 pub struct KeyboardDriver {
@@ -59,7 +62,15 @@ impl LayeredKeyboardDriver {
                 let code = &mut self.layered_codes[i].codes[idx.0][idx.1];
                 if !code.is_transparent() {
                     println!("Found key on layer {}", i);
-                    code.handle_event(&mut self.driver, state, &mut self.layer_attributes, idx);
+
+                    // Capture references to the driver and layers - then ask the key to handle
+                    // a state change event.
+                    let mut context = KeyEventContext {
+                        driver: &mut self.driver,
+                        layers: &mut self.layer_attributes,
+                        location: idx,
+                    };
+                    code.handle_event(&mut context, state);
                     return;
                 }
             }

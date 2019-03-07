@@ -10,6 +10,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::EventBuffer;
 
+/// The context/state surrounding a key event (e.g. press).
+pub struct KeyEventContext<'a> {
+    pub driver: &'a mut KeyboardDriver,
+    pub layers: &'a mut LayerCollection,
+    pub location: Index2D
+}
+
 /// Shorthand for a key and state change pair.
 pub struct KeyState(pub SimpleKey, pub KeyStateChange);
 
@@ -33,7 +40,7 @@ impl Into<evdev::InputEvent> for KeyState {
 pub trait KeyCode {
 
     /// React to a `KeyStateChange` event (e.g. the key was pressed).
-    fn handle_event(&mut self, _: &mut KeyboardDriver, _: KeyStateChange, _: &mut LayerCollection, _: Index2D) { }
+    fn handle_event(&mut self, _ctx: &mut KeyEventContext, _state: KeyStateChange) { }
 
     /// Check if the key is transparent (i.e. a pass-through to the key in the next lower layer).
     fn is_transparent(&self) -> bool { false }
@@ -47,8 +54,8 @@ impl KeyCode for TransparentKey {
 }
 
 impl KeyCode for SimpleKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, _ : &mut LayerCollection, _: Index2D) {
-        driver.output.send(KeyState(self.clone(), state).into());
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
+        ctx.driver.output.send(KeyState(self.clone(), state).into());
     }
 }
 
@@ -66,11 +73,11 @@ pub struct MacroKey {
 }
 
 impl KeyCode for MacroKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         if state == self.play_macro_when {
             for i in self.keys.iter_mut() {
-                i.handle_event(driver, KeyStateChange::Pressed, l, idx);
-                i.handle_event(driver, KeyStateChange::Released, l, idx);
+                i.handle_event(ctx, KeyStateChange::Pressed);
+                i.handle_event(ctx, KeyStateChange::Released);
             }
         }
 
@@ -85,11 +92,11 @@ pub struct ToggleLayerKey {
 }
 
 impl KeyCode for ToggleLayerKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         if state == KeyStateChange::Pressed {
             // Toggle the layer, and mask the RELEASED event that'll be processed soon.
-            l.toggle(&self.layer_name);
-            driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), idx);
+            ctx.layers.toggle(&self.layer_name);
+            ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
         }
     }
 }
@@ -104,11 +111,11 @@ pub struct MomentarilyEnableLayerKey {
 }
 
 impl KeyCode for MomentarilyEnableLayerKey {
-    fn handle_event(&mut self, _: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, _: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Held =>  { }
-            KeyStateChange::Released => { l.set(&self.layer_name, false); }
-            KeyStateChange::Pressed => { l.set(&self.layer_name, true); }
+            KeyStateChange::Released => { ctx.layers.set(&self.layer_name, false); }
+            KeyStateChange::Pressed => { ctx.layers.set(&self.layer_name, true); }
         }
     }
 }
@@ -121,16 +128,16 @@ pub struct EnableLayerKey {
 }
 
 impl KeyCode for EnableLayerKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Pressed => {
                 // Enable the layer.
-                l.set(&self.layer_name, true);
+                ctx.layers.set(&self.layer_name, true);
 
                 // This was a PRESSED, but a RELEASED event will soon follow.
                 // We don't want that event to hit the layer we just switched to.
                 // Temporarily block the release + hold events for this layer position.
-                driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), idx);
+                ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
             }
             _ => {}
         }
@@ -157,7 +164,7 @@ impl HoldEnableLayerPressKey {
 }
 
 impl KeyCode for HoldEnableLayerPressKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Held => {
                 /*
@@ -174,10 +181,10 @@ impl KeyCode for HoldEnableLayerPressKey {
                 // TODO: extract hold duration parameter...
                 let was_held = delta > Duration::from_millis(200);
                 if was_held {
-                    l.set(&self.layer_name, true);
+                    ctx.layers.set(&self.layer_name, true);
                 } else {
-                    self.key.handle_event(driver, KeyStateChange::Pressed, l, idx);
-                    self.key.handle_event(driver, KeyStateChange::Released, l, idx);
+                    self.key.handle_event(ctx, KeyStateChange::Pressed);
+                    self.key.handle_event(ctx, KeyStateChange::Released);
                 }
             }
         }
@@ -192,12 +199,12 @@ pub struct OneShotLayer {
 }
 
 impl KeyCode for OneShotLayer {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l : &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Held => { }
             KeyStateChange::Pressed => {
                 // Enable the target layer.
-                l.set(&self.layer_name, true);
+                ctx.layers.set(&self.layer_name, true);
 
                 // Inject a counter based call-back that disables the layer
                 // after another key has been released (this position doesn't count).
@@ -205,10 +212,10 @@ impl KeyCode for OneShotLayer {
                 let e = ScheduledLayerEvent {
                     layer_name: self.layer_name.clone(),
                     event_type: t,
-                    event_count: driver.output.stats.get(t) + 1,
+                    event_count: ctx.driver.output.stats.get(t) + 1,
                     enable_layer_at_event: false,
                 };
-                l.schedule_event_count_callback(e);
+                ctx.layers.schedule_event_count_callback(e);
 
                 // Register a block that temporarily prevents any holds or releases
                 // for being registered for this key. If this block was being run under
@@ -216,7 +223,7 @@ impl KeyCode for OneShotLayer {
                 //
                 // ... but based on one man's opinion, the ergonomics are better if the layer
                 // switches on PRESS (especially when typing quickly).
-                driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), idx);
+                ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
 
             }
             KeyStateChange::Released => { }
@@ -234,18 +241,18 @@ pub struct ModifierWrappedKey {
 }
 
 impl KeyCode for ModifierWrappedKey {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l: &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Pressed => {
-                self.modifier.handle_event(driver, state, l, idx);
-                self.key.handle_event(driver, state, l, idx);
+                self.modifier.handle_event(ctx, state);
+                self.key.handle_event(ctx, state);
             }
             KeyStateChange::Held => {
-                self.key.handle_event(driver, state, l, idx);
+                self.key.handle_event(ctx, state);
             }
             KeyStateChange::Released => {
-                self.key.handle_event(driver, state, l, idx);
-                self.modifier.handle_event(driver, state, l, idx);
+                self.key.handle_event(ctx, state);
+                self.modifier.handle_event(ctx, state);
             }
         }
     }
@@ -280,34 +287,34 @@ impl SpaceCadet {
 //       I'm not sure that's a problem, but maybe it indicates a problem with our logical
 //       representation of what's going on.
 impl KeyCode for SpaceCadet {
-    fn handle_event(&mut self, driver: &mut KeyboardDriver, state: KeyStateChange, l: &mut LayerCollection, idx: Index2D) {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Pressed => {
                 // When the key is pressed, we don't know whether to start the modifier
                 // or to emit a PRESS + RELEASE for the key. This means we need to watch
                 // for new key events. Key interception is well outside our permissions, so we'll
                 // rely on the driver to fill a two event buffer (modifier + some other key).
-                driver.output.set_buffer(EventBuffer::new_spacecadet());
-                self.modifier.handle_event(driver, KeyStateChange::Pressed, l, idx);
-                self.number_of_keys_pressed = driver.output.stats.get(KeyStateChange::Pressed);
+                ctx.driver.output.set_buffer(EventBuffer::new_spacecadet());
+                self.modifier.handle_event(ctx, KeyStateChange::Pressed);
+                self.number_of_keys_pressed = ctx.driver.output.stats.get(KeyStateChange::Pressed);
             }
             KeyStateChange::Released => {
                 // Was the key pressed and released without any other keys being struck?
-                let pressed_count = driver.output.stats.get(KeyStateChange::Pressed);
+                let pressed_count = ctx.driver.output.stats.get(KeyStateChange::Pressed);
                 let press_and_immediate_release = pressed_count == self.number_of_keys_pressed;
                 if press_and_immediate_release {
                     // Reset the driver's space cadet buffer.
-                    driver.output.set_buffer(EventBuffer::new());
+                    ctx.driver.output.set_buffer(EventBuffer::new());
 
                     // Then send a PRESS + RELEASE for the key.
-                    self.key_when_tapped.handle_event(driver, KeyStateChange::Pressed, l, idx);
-                    self.key_when_tapped.handle_event(driver, KeyStateChange::Released, l, idx);
+                    self.key_when_tapped.handle_event(ctx, KeyStateChange::Pressed);
+                    self.key_when_tapped.handle_event(ctx, KeyStateChange::Released);
 
                 } else {
                     // Other keys were pressed since this key was pressed.
                     // We trust the driver to handle the key we placed in the spacecadet buffer.
                     // We'll send the closing release event for the modifier.
-                    self.modifier.handle_event(driver, KeyStateChange::Released, l, idx);
+                    self.modifier.handle_event(ctx, KeyStateChange::Released);
                 }
             }
             KeyStateChange::Held => {}
