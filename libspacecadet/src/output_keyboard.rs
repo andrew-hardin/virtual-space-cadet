@@ -20,7 +20,7 @@ pub enum BufferAfterSendingKeys {
 }
 
 /// A simple buffer of `InputEvent` with policies for what to do
-/// when keys the buffer is full and keys are sent.
+/// when the buffer is full and keys are sent.
 pub struct EventBuffer {
     buffer: Vec<evdev::InputEvent>,
     send_keys_policy: BufferSendKeysWhen,
