@@ -294,8 +294,9 @@ impl KeyCode for ModifierWrappedKey {
 
 
 /// A key that acts like a modifier when used with another key,
-/// but acts like a simple key when tapped. The classic example is
-/// `LEFT_SHIFT` when held with another key, but `(` when tapped.
+/// but acts like a simple key when tapped.
+///
+/// The classic example is `SHIFT` when the cord contains another key, but `(` when tapped.
 pub struct SpaceCadet {
     key_when_tapped: Box<KeyCode>,
     modifier: SimpleKey,
@@ -316,10 +317,11 @@ impl SpaceCadet {
     }
 }
 
-// TODO: The space cadet modifier is based on the stats of real key events that are being written.
-//       Special keys, like a layer change key, won't be logically recorded as a "key hit after this key".
-//       I'm not sure that's a problem, but maybe it indicates a problem with our logical
-//       representation of what's going on.
+// Thought:
+//   The space cadet modifier is based on the stats of real key events that are being written.
+//   Special keys, like a layer change key, won't be logically recorded as a "key hit after this key".
+//   I'm not sure that's a problem, but maybe it indicates a problem with our logical
+//   representation of what's going on.
 impl KeyCode for SpaceCadet {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
