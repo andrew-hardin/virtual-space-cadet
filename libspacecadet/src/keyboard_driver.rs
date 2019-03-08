@@ -5,21 +5,16 @@ use crate::layer::*;
 use crate::keys::*;
 use std::time::{Duration, SystemTime};
 
-/// An input keyboard, virtual matrix, and output keyboard.
+/// A driver that includes in/out devices, a matrix, and key layers.
 pub struct KeyboardDriver<'a> {
     pub input: &'a mut InputKeyboard,
     pub output: &'a mut OutputKeyboard,
     pub matrix: VirtualKeyboardMatrix,
-}
-
-/// A keyboard driver with layers of keys.
-pub struct LayeredKeyboardDriver<'a> {
-    pub driver : KeyboardDriver<'a>,
     pub layered_codes: Vec<KeyCodeMatrix>,
     pub layer_attributes: LayerCollection
 }
 
-impl<'a> LayeredKeyboardDriver<'a> {
+impl<'a> KeyboardDriver<'a> {
 
     /// Add a layer to the driver by specify its attributes and code matrix.
     pub fn add_layer(&mut self, attr: LayerAttributes, codes: KeyCodeMatrix) {
@@ -30,21 +25,21 @@ impl<'a> LayeredKeyboardDriver<'a> {
     pub fn clock_tick(&mut self) {
 
         // Before dispatching new events, check if any layers need to be disabled.
-        self.layer_attributes.check_event_callbacks(self.driver.output.get_stats());
+        self.layer_attributes.check_event_callbacks(self.output.get_stats());
 
         // Check for any keys that have been held down and oppressed by the user.
         // TODO: relocate constant to a config/params object.
         let hold_down_threshold = Duration::from_millis(250);
         let now = SystemTime::now();
-        for idx in self.driver.matrix.detect_held_keys(hold_down_threshold, now) {
+        for idx in self.matrix.detect_held_keys(hold_down_threshold, now) {
             self.matrix_state_changed(idx, KeyStateChange::Pressed);
         }
 
         // Handle every event coming in from the input device.
-        for i in self.driver.input.read_events() {
-            match self.driver.matrix.update(i.clone()) {
+        for i in self.input.read_events() {
+            match self.matrix.update(i.clone()) {
                 // The key was within the matrix - store the update for later.
-                MatrixUpdateResult::Bypass => { self.driver.output.send_bypass_buffer(i); },
+                MatrixUpdateResult::Bypass => { self.output.send_bypass_buffer(i); },
                 MatrixUpdateResult::Redundant(_idx) => {},
                 MatrixUpdateResult::StateChanged(idx, state) => { self.matrix_state_changed(idx, state); },
                 MatrixUpdateResult::Blocked => {}
@@ -66,8 +61,8 @@ impl<'a> LayeredKeyboardDriver<'a> {
                     // Capture references to the driver and layers - then ask the key to handle
                     // a state change event.
                     let mut context = KeyEventContext {
-                        output_device: self.driver.output,
-                        virtual_matrix: &mut self.driver.matrix,
+                        output_device: self.output,
+                        virtual_matrix: &mut self.matrix,
                         layers: &mut self.layer_attributes,
                         location: idx,
                     };
@@ -88,7 +83,7 @@ impl<'a> LayeredKeyboardDriver<'a> {
 
     /// Verify that matrix and layers share the same dimensions.
     fn verify_dims(&self) -> Result<(), String> {
-        let dim = self.driver.matrix.dim();
+        let dim = self.matrix.dim();
         for i in self.layered_codes.iter().enumerate() {
             let other_dim = i.1.dim();
             if dim != other_dim {

@@ -53,14 +53,10 @@ fn main() {
     let mut input = EvdevKeyboard::open("/dev/input/event4");
     let mut output = UInputKeyboard::new(None);
 
-    let keyboard = KeyboardDriver {
+    let mut f = KeyboardDriver {
         input: &mut input,
         output: &mut output,
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
-    };
-
-    let mut f = LayeredKeyboardDriver {
-        driver: keyboard,
         layered_codes: Vec::new(),
         layer_attributes: LayerCollection::new(),
     };
