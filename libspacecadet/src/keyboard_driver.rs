@@ -66,7 +66,8 @@ impl<'a> LayeredKeyboardDriver<'a> {
                     // Capture references to the driver and layers - then ask the key to handle
                     // a state change event.
                     let mut context = KeyEventContext {
-                        driver: &mut self.driver,
+                        output_device: self.driver.output,
+                        virtual_matrix: &mut self.driver.matrix,
                         layers: &mut self.layer_attributes,
                         location: idx,
                     };

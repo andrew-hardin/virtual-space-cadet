@@ -1,18 +1,18 @@
 use evdev_rs as evdev;
 use crate::layer::LayerCollection;
-use crate::virtual_keyboard_matrix::KeyStateChange;
+use crate::virtual_keyboard_matrix::{KeyStateChange, VirtualKeyboardMatrix};
 use crate::virtual_keyboard_matrix::Index2D;
-use crate::keyboard_driver::KeyboardDriver;
 use crate::layer::ScheduledLayerEvent;
 
 pub use evdev::enums::EV_KEY as SimpleKey;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
-use crate::output_keyboard::EventBuffer;
+use crate::output_keyboard::{EventBuffer, OutputKeyboard};
 
 /// The context/state surrounding a key event (e.g. press).
-pub struct KeyEventContext<'a, 'b> {
-    pub driver: &'a mut KeyboardDriver<'b>,
+pub struct KeyEventContext<'a> {
+    pub output_device: &'a mut OutputKeyboard,
+    pub virtual_matrix: &'a mut VirtualKeyboardMatrix,
     pub layers: &'a mut LayerCollection,
     pub location: Index2D
 }
@@ -68,7 +68,7 @@ impl KeyCode for TransparentKey {
 
 impl KeyCode for SimpleKey {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
-        ctx.driver.output.send(KeyState(self.clone(), state).into());
+        ctx.output_device.send(KeyState(self.clone(), state).into());
     }
 }
 
@@ -108,7 +108,7 @@ impl KeyCode for ToggleLayerKey {
         if state == KeyStateChange::Pressed {
             // Toggle the layer, and mask the RELEASED event that'll be processed soon.
             ctx.layers.toggle(&self.layer_name);
-            ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
+            ctx.virtual_matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
         }
     }
     fn get_constraints(&self) -> Vec<KeyConstraint> {
@@ -156,7 +156,7 @@ impl KeyCode for EnableLayerKey {
                 // This was a PRESSED, but a RELEASED event will soon follow.
                 // We don't want that event to hit the layer we just switched to.
                 // Temporarily block the release + hold events for this layer position.
-                ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
+                ctx.virtual_matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
             }
             _ => {}
         }
@@ -203,7 +203,7 @@ impl KeyCode for HoldEnableLayerPressKey {
                 // hasn't been released yet.
                 if self.is_held_long_enough() {
                     ctx.layers.set(&self.layer_name, true);
-                    ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
+                    ctx.virtual_matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
                 }
             }
             KeyStateChange::Pressed => {
@@ -244,7 +244,7 @@ impl KeyCode for OneShotLayer {
                 let e = ScheduledLayerEvent {
                     layer_name: self.layer_name.clone(),
                     event_type: t,
-                    event_count: ctx.driver.output.get_stats().get(t) + 1,
+                    event_count: ctx.output_device.get_stats().get(t) + 1,
                     enable_layer_at_event: false,
                 };
                 ctx.layers.schedule_event_count_callback(e);
@@ -255,7 +255,7 @@ impl KeyCode for OneShotLayer {
                 //
                 // ... but based on one man's opinion, the ergonomics are better if the layer
                 // switches on PRESS (especially when typing quickly).
-                ctx.driver.matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
+                ctx.virtual_matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
 
             }
             KeyStateChange::Released => { }
@@ -330,21 +330,21 @@ impl KeyCode for SpaceCadet {
                 // or to emit a PRESS + RELEASE for the key. This means we need to watch
                 // for new key events. Key interception is well outside our permissions, so we'll
                 // rely on the driver to fill a two event buffer (modifier + some other key).
-                ctx.driver.output.set_buffer(EventBuffer::new_spacecadet());
+                ctx.output_device.set_buffer(EventBuffer::new_spacecadet());
 
                 // Record how many keys have been pressed, then send a pressed event.
                 // Because the buffer is active, this press won't increment any stats yet.
-                self.number_of_keys_pressed = ctx.driver.output.get_stats().get(KeyStateChange::Pressed);
+                self.number_of_keys_pressed = ctx.output_device.get_stats().get(KeyStateChange::Pressed);
                 self.modifier.handle_event(ctx, KeyStateChange::Pressed);
             }
             KeyStateChange::Released => {
                 // Was the key pressed and released without any other keys being struck?
-                let pressed_count = ctx.driver.output.get_stats().get(KeyStateChange::Pressed);
+                let pressed_count = ctx.output_device.get_stats().get(KeyStateChange::Pressed);
                 let press_and_immediate_release = pressed_count == self.number_of_keys_pressed;
                 if press_and_immediate_release {
                     // Reset the driver's space cadet buffer.
                     // Recall that this will clear a "modifier pressed" event.
-                    ctx.driver.output.set_buffer(EventBuffer::new());
+                    ctx.output_device.set_buffer(EventBuffer::new());
 
                     // Then send a PRESS + RELEASE for the key.
                     self.key_when_tapped.handle_event(ctx, KeyStateChange::Pressed);
