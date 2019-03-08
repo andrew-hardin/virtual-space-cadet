@@ -6,20 +6,20 @@ use crate::keys::*;
 use std::time::{Duration, SystemTime};
 
 /// An input keyboard, virtual matrix, and output keyboard.
-pub struct KeyboardDriver {
-    pub input: Box<InputKeyboard>,
-    pub output: Box<OutputKeyboard>,
+pub struct KeyboardDriver<'a> {
+    pub input: &'a mut InputKeyboard,
+    pub output: &'a mut OutputKeyboard,
     pub matrix: VirtualKeyboardMatrix,
 }
 
 /// A keyboard driver with layers of keys.
-pub struct LayeredKeyboardDriver {
-    pub driver : KeyboardDriver,
+pub struct LayeredKeyboardDriver<'a> {
+    pub driver : KeyboardDriver<'a>,
     pub layered_codes: Vec<KeyCodeMatrix>,
     pub layer_attributes: LayerCollection
 }
 
-impl LayeredKeyboardDriver {
+impl<'a> LayeredKeyboardDriver<'a> {
 
     /// Add a layer to the driver by specify its attributes and code matrix.
     pub fn add_layer(&mut self, attr: LayerAttributes, codes: KeyCodeMatrix) {

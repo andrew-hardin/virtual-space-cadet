@@ -11,8 +11,8 @@ use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::EventBuffer;
 
 /// The context/state surrounding a key event (e.g. press).
-pub struct KeyEventContext<'a> {
-    pub driver: &'a mut KeyboardDriver,
+pub struct KeyEventContext<'a, 'b> {
+    pub driver: &'a mut KeyboardDriver<'b>,
     pub layers: &'a mut LayerCollection,
     pub location: Index2D
 }

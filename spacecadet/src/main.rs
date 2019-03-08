@@ -22,7 +22,7 @@ fn base_layer_keys() -> KeyCodeMatrix {
     });
 
     let mut ans = KeyCodeMatrix::new((5, 1));
-    ans.codes[1][0] = Box::new(SimpleKey::KEY_CAPSLOCK);
+    ans.codes[0][0] = Box::new(SimpleKey::KEY_CAPSLOCK);
     ans.codes[1][0] = Box::new(SimpleKey::KEY_ESC);
     ans.codes[2][0] = Box::new(SimpleKey::KEY_TAB);
     ans.codes[3][0] = Box::new(SpaceCadet::new(left_paren, SimpleKey::KEY_LEFTSHIFT));
@@ -50,9 +50,12 @@ fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
 
 fn main() {
 
+    let mut input = EvdevKeyboard::open("/dev/input/event4");
+    let mut output = UInputKeyboard::new(None);
+
     let keyboard = KeyboardDriver {
-        input: Box::new(EvdevKeyboard::open("/dev/input/event4")),
-        output: Box::new(UInputKeyboard::new(None)),
+        input: &mut input,
+        output: &mut output,
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
     };
 
