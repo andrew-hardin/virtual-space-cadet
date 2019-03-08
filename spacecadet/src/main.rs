@@ -49,13 +49,9 @@ fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
 }
 
 fn main() {
-
-    let mut input = EvdevKeyboard::open("/dev/input/event4");
-    let mut output = UInputKeyboard::new(None);
-
     let mut f = KeyboardDriver {
-        input: &mut input,
-        output: &mut output,
+        input: EvdevKeyboard::open("/dev/input/event4"),
+        output: UInputKeyboard::new(None),
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
         layered_codes: Vec::new(),
         layer_attributes: LayerCollection::new(),

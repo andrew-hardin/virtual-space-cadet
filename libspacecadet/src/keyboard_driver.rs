@@ -6,15 +6,15 @@ use crate::keys::*;
 use std::time::{Duration, SystemTime};
 
 /// A driver that includes in/out devices, a matrix, and key layers.
-pub struct KeyboardDriver<'a> {
-    pub input: &'a mut InputKeyboard,
-    pub output: &'a mut OutputKeyboard,
+pub struct KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
+    pub input: I,
+    pub output: O,
     pub matrix: VirtualKeyboardMatrix,
     pub layered_codes: Vec<KeyCodeMatrix>,
     pub layer_attributes: LayerCollection
 }
 
-impl<'a> KeyboardDriver<'a> {
+impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
 
     /// Add a layer to the driver by specify its attributes and code matrix.
     pub fn add_layer(&mut self, attr: LayerAttributes, codes: KeyCodeMatrix) {
@@ -61,7 +61,7 @@ impl<'a> KeyboardDriver<'a> {
                     // Capture references to the driver and layers - then ask the key to handle
                     // a state change event.
                     let mut context = KeyEventContext {
-                        output_device: self.output,
+                        output_device: &mut self.output,
                         virtual_matrix: &mut self.matrix,
                         layers: &mut self.layer_attributes,
                         location: idx,
