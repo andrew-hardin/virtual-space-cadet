@@ -244,7 +244,7 @@ impl KeyCode for OneShotLayer {
                 let e = ScheduledLayerEvent {
                     layer_name: self.layer_name.clone(),
                     event_type: t,
-                    event_count: ctx.driver.output.stats.get(t) + 1,
+                    event_count: ctx.driver.output.get_stats().get(t) + 1,
                     enable_layer_at_event: false,
                 };
                 ctx.layers.schedule_event_count_callback(e);
@@ -334,12 +334,12 @@ impl KeyCode for SpaceCadet {
 
                 // Record how many keys have been pressed, then send a pressed event.
                 // Because the buffer is active, this press won't increment any stats yet.
-                self.number_of_keys_pressed = ctx.driver.output.stats.get(KeyStateChange::Pressed);
+                self.number_of_keys_pressed = ctx.driver.output.get_stats().get(KeyStateChange::Pressed);
                 self.modifier.handle_event(ctx, KeyStateChange::Pressed);
             }
             KeyStateChange::Released => {
                 // Was the key pressed and released without any other keys being struck?
-                let pressed_count = ctx.driver.output.stats.get(KeyStateChange::Pressed);
+                let pressed_count = ctx.driver.output.get_stats().get(KeyStateChange::Pressed);
                 let press_and_immediate_release = pressed_count == self.number_of_keys_pressed;
                 if press_and_immediate_release {
                     // Reset the driver's space cadet buffer.

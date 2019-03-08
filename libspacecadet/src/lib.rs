@@ -11,7 +11,7 @@ mod layer;
 pub use layer::*;
 
 mod output_keyboard;
-pub use output_keyboard::OutputKeyboard;
+pub use output_keyboard::UInputKeyboard;
 
 mod virtual_keyboard_matrix;
 pub use virtual_keyboard_matrix::*;

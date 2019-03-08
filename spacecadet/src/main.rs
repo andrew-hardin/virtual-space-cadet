@@ -52,7 +52,7 @@ fn main() {
 
     let keyboard = KeyboardDriver {
         input: Box::new(EvdevKeyboard::open("/dev/input/event4")),
-        output: OutputKeyboard::new(None),
+        output: Box::new(UInputKeyboard::new(None)),
         matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
     };
 

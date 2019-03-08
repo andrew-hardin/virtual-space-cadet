@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 /// An input keyboard, virtual matrix, and output keyboard.
 pub struct KeyboardDriver {
     pub input: Box<InputKeyboard>,
-    pub output: OutputKeyboard,
+    pub output: Box<OutputKeyboard>,
     pub matrix: VirtualKeyboardMatrix,
 }
 
@@ -30,7 +30,7 @@ impl LayeredKeyboardDriver {
     pub fn clock_tick(&mut self) {
 
         // Before dispatching new events, check if any layers need to be disabled.
-        self.layer_attributes.check_event_callbacks(self.driver.output.stats);
+        self.layer_attributes.check_event_callbacks(self.driver.output.get_stats());
 
         // Check for any keys that have been held down and oppressed by the user.
         // TODO: relocate constant to a config/params object.
@@ -44,7 +44,7 @@ impl LayeredKeyboardDriver {
         for i in self.driver.input.read_events() {
             match self.driver.matrix.update(i.clone()) {
                 // The key was within the matrix - store the update for later.
-                MatrixUpdateResult::Bypass => { self.driver.output.send(i); },
+                MatrixUpdateResult::Bypass => { self.driver.output.send_bypass_buffer(i); },
                 MatrixUpdateResult::Redundant(_idx) => {},
                 MatrixUpdateResult::StateChanged(idx, state) => { self.matrix_state_changed(idx, state); },
                 MatrixUpdateResult::Blocked => {}
