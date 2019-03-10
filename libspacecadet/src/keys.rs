@@ -631,4 +631,51 @@ mod tests {
         assert_eq!(fx.output.output_events.len(), 2);
         assert!(!fx.layer_attributes.is_enabled(1));
     }
+
+    #[test]
+    fn modifier_wrapped_key() {
+        let test_key = ModifierWrappedKey {
+            key: Box::new(SimpleKey::KEY_Z),
+            modifier: SimpleKey::KEY_LEFTSHIFT,
+        };
+        let mut fx = get_test_driver(Box::new(test_key));
+        let press : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release : evdev::InputEvent = KeyState( SimpleKey::KEY_1, KeyStateChange::Released).into();
+
+        let t0 = Instant::now();
+        let t1 = t0 + Duration::from_secs(10);
+        let t2 = t1 + Duration::from_millis(10);
+
+        // Press.
+        fx.input.events_to_read.push(press);
+        fx.clock_tick(t0);
+        assert_eq!(fx.output.output_events.len(), 2);
+
+        // Hold.
+        fx.clock_tick(t1);
+        assert_eq!(fx.output.output_events.len(), 3);
+
+        // Release.
+        fx.input.events_to_read.push(release);
+        fx.clock_tick(t2);
+        assert_eq!(fx.output.output_events.len(), 5);
+
+        // Check ordering and values.
+        let values = [
+            KeyStateChange::Pressed,
+            KeyStateChange::Pressed,
+            KeyStateChange::Held,
+            KeyStateChange::Released,
+            KeyStateChange::Released];
+        let codes = [
+            SimpleKey::KEY_LEFTSHIFT,
+            SimpleKey::KEY_Z,
+            SimpleKey::KEY_Z,
+            SimpleKey::KEY_Z,
+            SimpleKey::KEY_LEFTSHIFT];
+        for i in fx.output.output_events.iter().enumerate() {
+            assert_eq!(i.1.value, values[i.0] as i32);
+            assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
+        }
+    }
 }
