@@ -678,4 +678,87 @@ mod tests {
             assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
         }
     }
+
+    #[test]
+    fn space_cadet_taprelease() {
+
+        // Setup the driver.
+        let test_key = SpaceCadet::new_from_key(
+            SimpleKey::KEY_Z,
+            SimpleKey::KEY_LEFTSHIFT);
+        let mut fx = get_test_driver(Box::new(test_key));
+
+        let press : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release : evdev::InputEvent = KeyState( SimpleKey::KEY_1, KeyStateChange::Released).into();
+
+        // Quickly tap and release the key.
+        // This should result in a Z being pressed + released.
+        let t = Instant::now();
+        let t1 = t + Duration::from_millis(10);
+        fx.input.events_to_read.push(press);
+        fx.clock_tick(t);
+        assert!(fx.output.output_events.is_empty());
+        fx.input.events_to_read.push(release);
+        fx.clock_tick(t1);
+        assert_eq!(fx.output.output_events.len(), 2);
+
+        // Check values for equality.
+        let values = [
+            KeyStateChange::Pressed,
+            KeyStateChange::Released];
+        let codes = [
+            SimpleKey::KEY_Z,
+            SimpleKey::KEY_Z];
+        for i in fx.output.output_events.iter().enumerate() {
+            assert_eq!(i.1.value, values[i.0] as i32);
+            assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
+        }
+    }
+
+    #[test]
+    fn space_cadet_hold() {
+
+        // Setup the driver.
+        let test_key = SpaceCadet::new_from_key(
+            SimpleKey::KEY_Z,
+            SimpleKey::KEY_LEFTSHIFT);
+        let mut fx = get_test_driver(Box::new(test_key));
+        fx.layered_codes[0].codes[0][1] = Box::new(SimpleKey::KEY_Y);
+
+        let press1 : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release1 : evdev::InputEvent = KeyState( SimpleKey::KEY_1, KeyStateChange::Released).into();
+        let press2 : evdev::InputEvent = KeyState(SimpleKey::KEY_2, KeyStateChange::Pressed).into();
+        let release2 : evdev::InputEvent = KeyState( SimpleKey::KEY_2, KeyStateChange::Released).into();
+
+        // Press the spacecadet key, then press a second key while the
+        // spacecadet is still being held.
+        let t = Instant::now();
+        let event_sequence = [press1, press2.clone(), release2.clone(), press2, release2, release1];
+        for i in event_sequence.iter().enumerate() {
+            fx.input.events_to_read.push(i.1.clone());
+            fx.clock_tick(t + (i.0 as u32) * Duration::from_millis(10));
+        }
+
+        assert_eq!(fx.output.output_events.len(), 6);
+
+        // Check the sequence of output events.
+        let values = [
+            KeyStateChange::Pressed,
+            KeyStateChange::Pressed,
+            KeyStateChange::Released,
+            KeyStateChange::Pressed,
+            KeyStateChange::Released,
+            KeyStateChange::Released];
+        let codes = [
+            SimpleKey::KEY_LEFTSHIFT,
+            SimpleKey::KEY_Y,
+            SimpleKey::KEY_Y,
+            SimpleKey::KEY_Y,
+            SimpleKey::KEY_Y,
+            SimpleKey::KEY_LEFTSHIFT];
+        for i in fx.output.output_events.iter().enumerate() {
+            assert_eq!(i.1.value, values[i.0] as i32);
+            assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
+        }
+    }
 }
