@@ -59,6 +59,6 @@ fn main() {
 
     f.add_layer(LayerAttributes { name: "base".to_string(), enabled: true }, base_layer_keys());
 
-    let mut update = || f.clock_tick();
+    let mut update = || f.clock_tick(time::Instant::now());
     cyclic_executor(&mut update, 200);
 }

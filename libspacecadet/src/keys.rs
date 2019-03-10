@@ -5,7 +5,7 @@ use crate::virtual_keyboard_matrix::Index2D;
 use crate::layer::ScheduledLayerEvent;
 
 pub use evdev::enums::EV_KEY as SimpleKey;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::{EventBuffer, OutputKeyboard};
 
@@ -14,7 +14,8 @@ pub struct KeyEventContext<'a> {
     pub output_device: &'a mut OutputKeyboard,
     pub virtual_matrix: &'a mut VirtualKeyboardMatrix,
     pub layers: &'a mut LayerCollection,
-    pub location: Index2D
+    pub location: Index2D,
+    pub now: Instant,
 }
 
 /// Shorthand for a key and state change pair.
@@ -171,7 +172,7 @@ impl KeyCode for EnableLayerKey {
 pub struct HoldEnableLayerPressKey {
     layer_name: String,
     key: SimpleKey,
-    pressed_at: SystemTime,
+    pressed_at: Instant,
     hold_threshold: Duration,
 }
 
@@ -181,13 +182,13 @@ impl HoldEnableLayerPressKey {
         HoldEnableLayerPressKey {
             layer_name: layer_name.to_string(),
             key,
-            pressed_at: UNIX_EPOCH,
+            pressed_at: Instant::now(),
             hold_threshold
         }
     }
 
-    fn is_held_long_enough(&self) -> bool {
-        let delta = SystemTime::now().duration_since(self.pressed_at).unwrap();
+    fn is_held_long_enough(&self, now: Instant) -> bool {
+        let delta = now.duration_since(self.pressed_at);
         delta > self.hold_threshold
     }
 }
@@ -201,16 +202,16 @@ impl KeyCode for HoldEnableLayerPressKey {
                 // Then block any future holds and the next release on the new layer. This helps
                 // prevent phantom "releases" after a key switches to a different layer but
                 // hasn't been released yet.
-                if self.is_held_long_enough() {
+                if self.is_held_long_enough(ctx.now) {
                     ctx.layers.set(&self.layer_name, true);
                     ctx.virtual_matrix.set_block(BlockedKeyStates::new_block_release_and_hold(), ctx.location);
                 }
             }
             KeyStateChange::Pressed => {
-                self.pressed_at = SystemTime::now();
+                self.pressed_at = ctx.now;
             }
             KeyStateChange::Released => {
-                if self.is_held_long_enough() {
+                if self.is_held_long_enough(ctx.now) {
                     ctx.layers.set(&self.layer_name, true);
                 } else {
                     self.key.handle_event(ctx, KeyStateChange::Pressed);
@@ -359,5 +360,136 @@ impl KeyCode for SpaceCadet {
             }
             KeyStateChange::Held => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_io_keyboard::*;
+    use crate::layer::{LayerAttributes, KeyCodeMatrix};
+    use crate::keyboard_driver::*;
+
+    type TestDriver = KeyboardDriver<TestIOKeyboard, TestIOKeyboard>;
+
+
+    /// Utility for setting up a test driver with one key.
+    fn get_test_driver(key: Box<KeyCode>) -> TestDriver { get_test_driver_multilayer(vec![key]) }
+
+    /// Utility for setting up a test driver with one key on each layer.
+    fn get_test_driver_multilayer(keys: Vec<Box<KeyCode>>) -> TestDriver {
+        assert!(!keys.is_empty());
+        let mut layers = LayerCollection::new();
+        let mut layer_codes = Vec::new();
+        for i in keys.into_iter().enumerate() {
+            layers.add(LayerAttributes {
+                name: format!("layer_{}", i.0),
+                enabled: i.0 == 0
+            });
+
+            let mut codes = KeyCodeMatrix::new((1, 1));
+            codes.codes[0][0] = i.1;
+            layer_codes.push(codes);
+        }
+
+        TestDriver {
+            input: TestIOKeyboard::new(),
+            output: TestIOKeyboard::new(),
+            layer_attributes: layers,
+            layered_codes: layer_codes,
+            matrix: VirtualKeyboardMatrix::new(vec![vec![Some(SimpleKey::KEY_1)]]),
+        }
+    }
+
+    #[test]
+    fn simple_key() {
+        let mut fx = get_test_driver(Box::new(SimpleKey::KEY_A));
+
+        let position: SimpleKey = SimpleKey::KEY_1;
+        let press : evdev::InputEvent = KeyState(position.clone(), KeyStateChange::Pressed).into();
+        let hold : evdev::InputEvent = KeyState(position.clone(), KeyStateChange::Held).into();
+        let release : evdev::InputEvent = KeyState(position, KeyStateChange::Released).into();
+
+        // Simulate a key press, hold, and release.
+        // Because the hold occurs in a single clock tick, we should expect just two events.
+        fx.input.events_to_read = vec![press, hold, release];
+        fx.clock_tick(Instant::now());
+        println!("{:?}", fx.output.output_events);
+        assert_eq!(fx.output.output_events.len(), 2);
+    }
+
+    fn check_noop_key(key: Box<KeyCode>) {
+        let mut fx = get_test_driver(key);
+        fx.input.events_to_read = vec![KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into()];
+        fx.clock_tick(Instant::now());
+        assert!(fx.output.output_events.is_empty());
+    }
+
+    #[test]
+    fn transparent_key() {
+        check_noop_key(Box::new(TransparentKey{}));
+    }
+
+    #[test]
+    fn opaque_key() {
+        check_noop_key(Box::new(OpaqueKey{}));
+    }
+
+    #[test]
+    fn macro_key() {
+        // Construct a driver with a single macro key.
+        let key = MacroKey {
+            play_macro_when: KeyStateChange::Released,
+            keys: vec![SimpleKey::KEY_H, SimpleKey::KEY_I]
+        };
+        let mut fx = get_test_driver(Box::new(key));
+
+        // Process a press event.
+        let t = Instant::now();
+        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
+        fx.clock_tick(t);
+        assert_eq!(fx.output.output_events.len(), 0);
+
+        // Process a release event (this should trigger the macro).
+        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into());
+        fx.clock_tick(t);
+        assert_eq!(fx.output.output_events.len(), 4);
+
+        // Check that the order is press then release.
+        for i in fx.output.output_events.iter().enumerate() {
+            if i.0 % 2 == 0 { assert_eq!(i.1.value, KeyStateChange::Pressed as i32) }
+            else { assert_eq!(i.1.value, KeyStateChange::Released as i32); }
+        }
+    }
+
+    #[test]
+    fn toggle_layer_key() {
+        // Create a driver with a toggle layer key on layer_0, and a simple key on layer_1
+        let key = ToggleLayerKey { layer_name: "layer_1".to_string() };
+        let plain_key = SimpleKey::KEY_A;
+        let mut fx = get_test_driver_multilayer(
+            vec![Box::new(key), Box::new(plain_key.clone())]
+        );
+
+        // Toggle the layer on key press.
+        assert!(!fx.layer_attributes.is_enabled(1));
+        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
+        fx.clock_tick(Instant::now());
+        assert!(fx.layer_attributes.is_enabled(1));
+
+        // The layer changed on key-down. The key-press event could be registered
+        // on a random key- check that we're blocking this.
+        assert!(fx.input.events_to_read.is_empty());
+        assert!(fx.output.output_events.is_empty());
+        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into());
+        fx.clock_tick(Instant::now());
+        assert!(fx.output.output_events.is_empty());
+
+        // Suppose that the user presses the key again.
+        // This should register on the second layer.
+        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
+        fx.clock_tick(Instant::now());
+        assert_eq!(fx.output.output_events.len(), 1);
+        assert_eq!(fx.output.output_events[0].event_code, evdev::enums::EventCode::EV_KEY(plain_key));
     }
 }

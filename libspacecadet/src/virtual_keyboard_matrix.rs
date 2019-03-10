@@ -1,6 +1,6 @@
 use evdev_rs as evdev;
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use crate::keys;
 
 
@@ -104,7 +104,7 @@ impl BlockedKeyStates {
 }
 
 /// Return states from after updating `VirtualKeyboardMatrix`.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum MatrixUpdateResult {
     /// The given event wasn't within the matrix.
     Bypass,
@@ -153,7 +153,7 @@ impl VirtualKeyboardMatrix {
 
         VirtualKeyboardMatrix {
             key_to_index: hash,
-            dim: dim,
+            dim,
             state: StateMatrix::new(dim),
             blocked: vec![vec![BlockedKeyStates::new(); dim.1]; dim.0],
         }
@@ -171,18 +171,14 @@ impl VirtualKeyboardMatrix {
 
     /// Update the matrix using an input event (e.g. `KEY_A` was pressed).
     /// Events can be blocked (see `set_block`).
-    pub fn update(&mut self, event: evdev::InputEvent) -> MatrixUpdateResult {
+    pub fn update(&mut self, event: evdev::InputEvent, now: Instant) -> MatrixUpdateResult {
         // Update the matrix, then check if the event is blocked.
-        let ans = self.update_without_blocking(event);
+        let ans = self.update_without_blocking(event, now);
         self.check_blocking(ans)
     }
 
     /// Update the matrix state by processing a single event.
-    fn update_without_blocking(&mut self, event: evdev::InputEvent) -> MatrixUpdateResult {
-
-        // Convert the event time into a friendly representation.
-        let now = UNIX_EPOCH +
-            Duration::new(event.time.tv_sec as u64, event.time.tv_usec as u32 * 1000);
+    fn update_without_blocking(&mut self, event: evdev::InputEvent, now: Instant) -> MatrixUpdateResult {
 
         // Filter based on the event code.
         // We only support EV_KEY events than are also in our matrix.
@@ -217,7 +213,7 @@ impl VirtualKeyboardMatrix {
     /// Holds can be blocked (see `set_block`).
     ///
     /// Returns a vector of positions where keys have been held.
-    pub fn detect_held_keys(&mut self, held_key_threshold: Duration, now: SystemTime) -> Vec<Index2D> {
+    pub fn detect_held_keys(&mut self, held_key_threshold: Duration, now: Instant) -> Vec<Index2D> {
         self.detect_held_keys_without_blocking(held_key_threshold, now).iter()
             .filter(|x| {
                 // Drop keys that are blocked (i.e. keep keys that aren't blocked).
@@ -227,7 +223,7 @@ impl VirtualKeyboardMatrix {
             .collect()
     }
 
-    fn detect_held_keys_without_blocking(&mut self, held_key_threshold: Duration, now: SystemTime) -> Vec<Index2D> {
+    fn detect_held_keys_without_blocking(&mut self, held_key_threshold: Duration, now: Instant) -> Vec<Index2D> {
         // Loop through every cell in the matrix and detect keys that
         // have been held for longer than the given threshold.
         let mut ans = Vec::new();
@@ -260,16 +256,16 @@ impl VirtualKeyboardMatrix {
 /// A 2D matrix that records where and when key presses occurred.
 struct StateMatrix {
     state: Vec<Vec<bool>>,
-    last_pressed: Vec<Vec<SystemTime>>,
+    last_pressed: Vec<Vec<Instant>>,
 }
 
 impl StateMatrix {
     /// Create a new state NxM state matrix with every key unpressed.
     pub fn new(dim: Index2D) -> StateMatrix {
-        // Initialize our state with every key unpressed.
+        let pressed_ages_ago = Instant::now() - Duration::from_secs(60 * 60);
         StateMatrix {
             state: vec![vec![false; dim.1]; dim.0],
-            last_pressed: vec![vec![UNIX_EPOCH; dim.1]; dim.0],
+            last_pressed: vec![vec![pressed_ages_ago; dim.1]; dim.0],
         }
     }
 
@@ -277,7 +273,7 @@ impl StateMatrix {
     ///
     /// If the key's state changed (e.g. pressed -> released), then
     /// Some() is returned.
-    pub fn set(&mut self, dim: Index2D, is_pressed: bool, now: SystemTime) -> Option<KeyStateChange> {
+    pub fn set(&mut self, dim: Index2D, is_pressed: bool, now: Instant) -> Option<KeyStateChange> {
         let old_state = self.state[dim.0][dim.1];
         let new_state = is_pressed;
         self.state[dim.0][dim.1] = new_state;
@@ -295,14 +291,14 @@ impl StateMatrix {
     }
 
     /// Check if a key at the given index has been held longer than a specified duration.
-    pub fn is_held(&self, idx: Index2D, hold_threshold: Duration, now: SystemTime) -> bool {
+    pub fn is_held(&self, idx: Index2D, hold_threshold: Duration, now: Instant) -> bool {
         let is_pressed = self.state[idx.0][idx.1];
         let held_long_enough = self.last_pressed[idx.0][idx.1] + hold_threshold <= now;
         is_pressed && held_long_enough
     }
 
     /// Reset the timestamp for when a key was last pressed.
-    pub fn reset_key_press_time(&mut self, idx: Index2D, when: SystemTime) {
+    pub fn reset_key_press_time(&mut self, idx: Index2D, when: Instant) {
         self.last_pressed[idx.0][idx.1] = when;
     }
 }
@@ -316,17 +312,17 @@ mod tests {
         let mut m = StateMatrix::new((3, 5));
 
         // Check the rules that govern whether or not a set yields something.
-        assert!(m.set((0, 0), false, SystemTime::now()).is_none());
-        assert_eq!(m.set((0, 0), true, SystemTime::now()).unwrap(), KeyStateChange::Pressed);
-        assert!(m.set((0, 0), true, SystemTime::now()).is_none());
-        assert_eq!(m.set((0, 0), false, SystemTime::now()).unwrap(), KeyStateChange::Released);
+        assert!(m.set((0, 0), false, Instant::now()).is_none());
+        assert_eq!(m.set((0, 0), true, Instant::now()).unwrap(), KeyStateChange::Pressed);
+        assert!(m.set((0, 0), true, Instant::now()).is_none());
+        assert_eq!(m.set((0, 0), false, Instant::now()).unwrap(), KeyStateChange::Released);
     }
 
     #[test]
     fn state_matrix_check_held_keys() {
 
         let mut m = StateMatrix::new((3, 5));
-        let reference = SystemTime::now();
+        let reference = Instant::now();
         let half_hold = Duration::from_millis(100);
         let hold = Duration::from_millis(200);
         let hold2 = Duration::from_millis(200 * 2);
@@ -400,25 +396,26 @@ mod tests {
         let press_9 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_9, KeyStateChange::Pressed).into();
         let press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
         let release_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Released).into();
+        let t = Instant::now();
 
         // Update with an event that's not part of the matrix.
-        assert!(is_enum_variant!(mat.update(press_9), MatrixUpdateResult::Bypass));
+        assert!(is_enum_variant!(mat.update(press_9, t), MatrixUpdateResult::Bypass));
 
         // Send a release event, even though the key is already released.
-        assert!(is_enum_variant!(mat.update(release_1.clone()), MatrixUpdateResult::Redundant((1, 0))));
+        assert!(is_enum_variant!(mat.update(release_1.clone(), t), MatrixUpdateResult::Redundant((1, 0))));
 
         // Press and release.
-        assert!(is_enum_variant!(mat.update(press_1.clone()), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
-        assert!(is_enum_variant!(mat.update(release_1.clone()), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Released)));
+        assert!(is_enum_variant!(mat.update(press_1.clone(), t), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+        assert!(is_enum_variant!(mat.update(release_1.clone(), t), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Released)));
 
         // Send a press event, then turn on the block for the key.
         // This is the classic layer-switching use case.
-        assert!(is_enum_variant!(mat.update(press_1.clone()), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+        assert!(is_enum_variant!(mat.update(press_1.clone(), t), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
         mat.set_block(BlockedKeyStates::new_block_release_and_hold(), (1, 0));
-        assert!(is_enum_variant!(mat.update(release_1), MatrixUpdateResult::Blocked));
+        assert!(is_enum_variant!(mat.update(release_1, t), MatrixUpdateResult::Blocked));
 
         // The key shouldn't be blocked anymore.
-        assert!(is_enum_variant!(mat.update(press_1), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+        assert!(is_enum_variant!(mat.update(press_1, t), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
     }
 
     #[test]
@@ -426,16 +423,15 @@ mod tests {
 
         // Grab a matrix and setup press + release events.
         let mut mat = get_simple_matrix();
-        let mut press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let press_1 : evdev::InputEvent = keys::KeyState(keys::SimpleKey::KEY_1, KeyStateChange::Pressed).into();
 
         // We're going to say the press happened at the UNIX_EPOCH.
-        press_1.time.tv_sec = 0;
-        press_1.time.tv_usec = 0;
-        assert!(is_enum_variant!(mat.update(press_1), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
+        let t = Instant::now();
+        assert!(is_enum_variant!(mat.update(press_1, t), MatrixUpdateResult::StateChanged((1, 0), KeyStateChange::Pressed)));
 
         let hold = Duration::from_millis(200);
-        let pre_hold = UNIX_EPOCH + Duration::from_millis(100);
-        let post_hold = UNIX_EPOCH + Duration::from_millis(300);
+        let pre_hold = t + Duration::from_millis(100);
+        let post_hold = t + Duration::from_millis(300);
 
         assert_eq!(mat.detect_held_keys(hold, pre_hold).len(), 0);
         assert_eq!(mat.detect_held_keys(hold, post_hold)[0], (1, 0));
