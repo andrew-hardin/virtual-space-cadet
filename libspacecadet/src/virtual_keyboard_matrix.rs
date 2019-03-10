@@ -126,7 +126,9 @@ pub struct VirtualKeyboardMatrix {
     key_to_index: HashMap<evdev::enums::EV_KEY, Index2D>,
     dim: Index2D,
     state: StateMatrix,
-    blocked: Vec<Vec<BlockedKeyStates>>
+    blocked: Vec<Vec<BlockedKeyStates>>,
+    // TODO: figure out how to expose this parameter.
+    hold_down_threshold: Duration
 }
 
 impl VirtualKeyboardMatrix {
@@ -156,6 +158,7 @@ impl VirtualKeyboardMatrix {
             dim,
             state: StateMatrix::new(dim),
             blocked: vec![vec![BlockedKeyStates::new(); dim.1]; dim.0],
+            hold_down_threshold: Duration::from_millis(200),
         }
     }
 
@@ -213,8 +216,8 @@ impl VirtualKeyboardMatrix {
     /// Holds can be blocked (see `set_block`).
     ///
     /// Returns a vector of positions where keys have been held.
-    pub fn detect_held_keys(&mut self, held_key_threshold: Duration, now: Instant) -> Vec<Index2D> {
-        self.detect_held_keys_without_blocking(held_key_threshold, now).iter()
+    pub fn detect_held_keys(&mut self, now: Instant) -> Vec<Index2D> {
+        self.detect_held_keys_without_blocking(now).iter()
             .filter(|x| {
                 // Drop keys that are blocked (i.e. keep keys that aren't blocked).
                 !self.blocked[x.0][x.1].check_if_blocked(KeyStateChange::Held)
@@ -223,14 +226,14 @@ impl VirtualKeyboardMatrix {
             .collect()
     }
 
-    fn detect_held_keys_without_blocking(&mut self, held_key_threshold: Duration, now: Instant) -> Vec<Index2D> {
+    fn detect_held_keys_without_blocking(&mut self, now: Instant) -> Vec<Index2D> {
         // Loop through every cell in the matrix and detect keys that
         // have been held for longer than the given threshold.
         let mut ans = Vec::new();
         for r in 0..self.dim.0 {
             for c in 0..self.dim.1 {
                 let idx = (r, c);
-                if self.state.is_held(idx, held_key_threshold, now) {
+                if self.state.is_held(idx, self.hold_down_threshold, now) {
                     ans.push(idx);
                     self.state.reset_key_press_time(idx,now);
                 }
@@ -433,12 +436,13 @@ mod tests {
         let pre_hold = t + Duration::from_millis(100);
         let post_hold = t + Duration::from_millis(300);
 
-        assert_eq!(mat.detect_held_keys(hold, pre_hold).len(), 0);
-        assert_eq!(mat.detect_held_keys(hold, post_hold)[0], (1, 0));
+        mat.hold_down_threshold = hold;
+        assert_eq!(mat.detect_held_keys(pre_hold).len(), 0);
+        assert_eq!(mat.detect_held_keys(post_hold)[0], (1, 0));
 
         // Check that blocked key holds don't register.
         mat.set_block(BlockedKeyStates::new_block_release_and_hold(), (1, 0));
-        assert_eq!(mat.detect_held_keys(hold, pre_hold).len(), 0);
-        assert_eq!(mat.detect_held_keys(hold, post_hold).len(), 0);
+        assert_eq!(mat.detect_held_keys(pre_hold).len(), 0);
+        assert_eq!(mat.detect_held_keys(post_hold).len(), 0);
     }
 }

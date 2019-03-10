@@ -3,7 +3,7 @@ use crate::output_keyboard::*;
 use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
 use crate::keys::*;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 /// A driver that includes in/out devices, a matrix, and key layers.
 pub struct KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
@@ -24,14 +24,9 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
 
     pub fn clock_tick(&mut self, now: Instant) {
 
-        // Before dispatching new events, check if any layers need to be disabled.
-        self.layer_attributes.check_event_callbacks(self.output.get_stats());
-
         // Check for any keys that have been held down and oppressed by the user.
-        // TODO: relocate constant to a config/params object.
-        let hold_down_threshold = Duration::from_millis(250);
-        for idx in self.matrix.detect_held_keys(hold_down_threshold, now) {
-            self.matrix_state_changed(idx, KeyStateChange::Pressed, now);
+        for idx in self.matrix.detect_held_keys(now) {
+            self.matrix_state_changed(idx, KeyStateChange::Held, now);
         }
 
         // Handle every event coming in from the input device.
@@ -44,6 +39,9 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
                 MatrixUpdateResult::Blocked => {}
             }
         }
+
+        // Check if any layer event callbacks need to be processed.
+        self.layer_attributes.check_event_callbacks(self.output.get_stats());
     }
 
     fn matrix_state_changed(&mut self, idx: Index2D, state: KeyStateChange, now: Instant) {
@@ -55,7 +53,6 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
             if self.layer_attributes.is_enabled(i) {
                 let code = &mut self.layered_codes[i].codes[idx.0][idx.1];
                 if !code.is_transparent() {
-                    println!("Found key on layer {}", i);
 
                     // Capture references to the driver and layers - then ask the key to handle
                     // a state change event.

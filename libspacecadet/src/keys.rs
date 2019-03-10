@@ -62,7 +62,7 @@ pub trait KeyCode {
 
 
 /// A key that's transparent; a pass-through to the key below it in the layer hierarchy.
-pub struct TransparentKey;
+pub struct TransparentKey {}
 impl KeyCode for TransparentKey {
     fn is_transparent(&self) -> bool { true }
 }
@@ -387,7 +387,7 @@ mod tests {
                 enabled: i.0 == 0
             });
 
-            let mut codes = KeyCodeMatrix::new((1, 1));
+            let mut codes = KeyCodeMatrix::new((1, 2));
             codes.codes[0][0] = i.1;
             layer_codes.push(codes);
         }
@@ -397,7 +397,7 @@ mod tests {
             output: TestIOKeyboard::new(),
             layer_attributes: layers,
             layered_codes: layer_codes,
-            matrix: VirtualKeyboardMatrix::new(vec![vec![Some(SimpleKey::KEY_1)]]),
+            matrix: VirtualKeyboardMatrix::new(vec![vec![Some(SimpleKey::KEY_1), Some(SimpleKey::KEY_2)]]),
         }
     }
 
@@ -414,7 +414,6 @@ mod tests {
         // Because the hold occurs in a single clock tick, we should expect just two events.
         fx.input.events_to_read = vec![press, hold, release];
         fx.clock_tick(Instant::now());
-        println!("{:?}", fx.output.output_events);
         assert_eq!(fx.output.output_events.len(), 2);
     }
 
@@ -491,5 +490,145 @@ mod tests {
         fx.clock_tick(Instant::now());
         assert_eq!(fx.output.output_events.len(), 1);
         assert_eq!(fx.output.output_events[0].event_code, evdev::enums::EventCode::EV_KEY(plain_key));
+    }
+
+    #[test]
+    fn momentarily_enable_layer_key() {
+        // Setup the test driver.
+        let test_key = MomentarilyEnableLayerKey { layer_name: "layer_1".to_string() };
+        let plain_key = TransparentKey{};
+        let mut fx = get_test_driver_multilayer(
+            vec![Box::new(test_key), Box::new(plain_key)]
+        );
+
+        let press = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release = KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into();
+
+        // The test key enables a layer on press, and disables on release.
+        assert!(!fx.layer_attributes.is_enabled(1));
+        fx.input.events_to_read.push(press);
+        fx.clock_tick(Instant::now());
+        assert!(fx.layer_attributes.is_enabled(1));
+        fx.input.events_to_read.push(release);
+        fx.clock_tick(Instant::now());
+        assert!(!fx.layer_attributes.is_enabled(1));
+    }
+
+    #[test]
+    fn enable_layer_key() {
+        // Setup the test driver.
+        let test_key = EnableLayerKey { layer_name: "layer_1".to_string() };
+        let plain_key = SimpleKey::KEY_A;
+        let mut fx = get_test_driver_multilayer(
+            vec![Box::new(test_key), Box::new(plain_key.clone())]
+        );
+
+        let press = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release = KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into();
+
+        // Simulate a press.
+        assert!(!fx.layer_attributes.is_enabled(1));
+        fx.input.events_to_read.push(press);
+        fx.clock_tick(Instant::now());
+        assert!(fx.layer_attributes.is_enabled(1));
+
+        // Check that the release is blocked.
+        fx.input.events_to_read.push(release);
+        fx.clock_tick(Instant::now());
+        assert!(fx.output.output_events.is_empty());
+    }
+
+    #[test]
+    fn hold_enable_layer_press_key() {
+        // Setup the driver with the test key at (0, 0).
+        let not_hold = Duration::from_millis(10);
+        let theshold = Duration::from_millis(15);
+        let hold = Duration::from_millis(20);
+        let long_pause = Duration::from_secs(60);
+        let mut t = Instant::now();
+
+        // Configure the driver.
+        let test_key = HoldEnableLayerPressKey::new("layer_1", SimpleKey::KEY_A, theshold);
+        let plain_key = SimpleKey::KEY_B;
+        let mut fx = get_test_driver_multilayer(
+            vec![Box::new(test_key), Box::new(plain_key)]
+        );
+
+        let press : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into();
+
+        // Test the quick press + release that emits a key
+        // instead of modifying the layers states.
+        fx.input.events_to_read.push(press.clone());
+        fx.clock_tick(t);
+        assert!(!fx.layer_attributes.is_enabled(1));
+        assert!(fx.output.output_events.is_empty());
+
+        // Release the key before it registers as a hold.
+        // This should emit A (both press and release).
+        fx.input.events_to_read.push(release.clone());
+        fx.clock_tick(t + not_hold);
+        assert!(!fx.layer_attributes.is_enabled(1));
+        assert_eq!(fx.output.output_events.len(), 2);
+
+        // Reset the output, then simulate a long pause.
+        fx.output.output_events.clear();
+        t += long_pause;
+
+        // Test the press + hold + release that should enable a layer.
+        fx.input.events_to_read.push(press);
+        fx.clock_tick(t);
+        assert!(!fx.layer_attributes.is_enabled(1));
+        assert!(fx.output.output_events.is_empty());
+
+        // Release the key - it should register as being held long enough.
+        fx.input.events_to_read.push(release.clone());
+        fx.clock_tick(t + hold);
+        assert!(fx.layer_attributes.is_enabled(1));
+        assert!(fx.output.output_events.is_empty());
+    }
+
+    #[test]
+    fn one_shot_layer() {
+        let test_key = OneShotLayer {
+            layer_name: "layer_1".to_string()
+        };
+        let plain_key = SimpleKey::KEY_B;
+        let mut fx = get_test_driver_multilayer(
+            vec![Box::new(test_key), Box::new(plain_key)]
+        );
+
+        let press1 : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
+        let release1 : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into();
+
+        // The layer should be enabled on press.
+        assert!(!fx.layer_attributes.is_enabled(1));
+        fx.input.events_to_read.push(press1);
+        fx.clock_tick(Instant::now());
+        assert!(fx.layer_attributes.is_enabled(1));
+
+        // The following release event shouldn't output any events.
+        fx.input.events_to_read.push(release1);
+        fx.clock_tick(Instant::now());
+        assert!(fx.output.output_events.is_empty());
+
+        // We should be able to press and release a key on the newly enabled layer.
+        // The driver's missing a key in the second column - we'll add one for the test.
+        fx.layered_codes[1].codes[0][1] = Box::new(SimpleKey::KEY_Z);
+        let press2 : evdev::InputEvent = KeyState(SimpleKey::KEY_2, KeyStateChange::Pressed).into();
+        let release2 : evdev::InputEvent = KeyState(SimpleKey::KEY_2, KeyStateChange::Released).into();
+
+        // Press.
+        assert!(fx.layer_attributes.is_enabled(1));
+        fx.input.events_to_read.push(press2);
+        fx.clock_tick(Instant::now());
+        assert_eq!(fx.output.output_events.len(), 1);
+        assert!(fx.layer_attributes.is_enabled(1));
+
+        // Release.
+        fx.input.events_to_read.push(release2);
+        fx.clock_tick(Instant::now());
+        assert_eq!(fx.output.output_events.len(), 2);
+        assert!(!fx.layer_attributes.is_enabled(1));
     }
 }
