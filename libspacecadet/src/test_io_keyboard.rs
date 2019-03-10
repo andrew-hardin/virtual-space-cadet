@@ -4,48 +4,59 @@ use crate::output_keyboard::{EventBuffer, OutputKeyboard};
 use crate::virtual_keyboard_matrix::KeyStats;
 
 
-/// A keyboard that implements both input and output keyboard traits.
+/// A keyboard that implements the input keyboard traits.
 /// Used for testing keys and observing side effects.
-pub struct TestIOKeyboard {
-    pub events_to_read: Vec<evdev::InputEvent>,
-    pub output_events: Vec<evdev::InputEvent>,
-    pub input_stats: KeyStats,
-    pub output_stats: KeyStats,
+pub struct TestInputKeyboard {
+    pub events: Vec<evdev::InputEvent>,
+    pub stats: KeyStats,
+}
+
+impl TestInputKeyboard {
+    pub fn new() -> TestInputKeyboard {
+        TestInputKeyboard {
+            events: Vec::new(),
+            stats: KeyStats::new(),
+        }
+    }
+}
+
+impl InputKeyboard for TestInputKeyboard {
+    fn read_events(&mut self) -> Vec<evdev::InputEvent> {
+        let ans = self.events.clone();
+        for i in ans.iter() {
+            self.stats.increment(i.value.into());
+        }
+        self.events = Vec::new();
+        ans
+    }
+    fn get_stats(&self) -> KeyStats { self.stats }
+}
+
+/// A keyboard that implements the output keyboard traits.
+/// Used for testing keys and observing side effects.
+pub struct TestOutputKeyboard {
+    pub events: Vec<evdev::InputEvent>,
+    pub stats: KeyStats,
     pub buffer: EventBuffer
 }
 
-impl TestIOKeyboard {
-    pub fn new() -> TestIOKeyboard {
-        TestIOKeyboard {
-            events_to_read: Vec::new(),
-            output_events: Vec::new(),
-            input_stats: KeyStats::new(),
-            output_stats: KeyStats::new(),
+
+impl TestOutputKeyboard {
+    pub fn new() -> TestOutputKeyboard {
+        TestOutputKeyboard {
+            events: Vec::new(),
+            stats: KeyStats::new(),
             buffer: EventBuffer::new(),
         }
     }
-}
 
-impl InputKeyboard for TestIOKeyboard {
-    fn read_events(&mut self) -> Vec<evdev::InputEvent> {
-        let ans = self.events_to_read.clone();
-        for i in ans.iter() {
-            self.input_stats.increment(i.value.into());
-        }
-        self.events_to_read = Vec::new();
-        ans
-    }
-    fn get_stats(&self) -> KeyStats { self.input_stats }
-}
-
-impl TestIOKeyboard {
     fn send_unbuffered(&mut self, e: evdev::InputEvent) {
-        self.output_stats.increment(e.value.into());
-        self.output_events.push(e);
+        self.stats.increment(e.value.into());
+        self.events.push(e);
     }
 }
 
-impl OutputKeyboard for TestIOKeyboard {
+impl OutputKeyboard for TestOutputKeyboard {
     fn send_override(&mut self, e: evdev::InputEvent, bypass_buffer: bool) {
         if bypass_buffer { self.send_unbuffered(e); }
         else {
@@ -56,5 +67,5 @@ impl OutputKeyboard for TestIOKeyboard {
         }
     }
     fn set_buffer(&mut self, buffer: EventBuffer) { self.buffer = buffer; }
-    fn get_stats(&self) -> KeyStats { self.output_stats }
+    fn get_stats(&self) -> KeyStats { self.stats }
 }

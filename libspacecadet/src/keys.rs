@@ -370,7 +370,7 @@ mod tests {
     use crate::layer::{LayerAttributes, KeyCodeMatrix};
     use crate::keyboard_driver::*;
 
-    type TestDriver = KeyboardDriver<TestIOKeyboard, TestIOKeyboard>;
+    type TestDriver = KeyboardDriver<TestInputKeyboard, TestOutputKeyboard>;
 
 
     /// Utility for setting up a test driver with one key.
@@ -393,8 +393,8 @@ mod tests {
         }
 
         TestDriver {
-            input: TestIOKeyboard::new(),
-            output: TestIOKeyboard::new(),
+            input: TestInputKeyboard::new(),
+            output: TestOutputKeyboard::new(),
             layer_attributes: layers,
             layered_codes: layer_codes,
             matrix: VirtualKeyboardMatrix::new(vec![vec![Some(SimpleKey::KEY_1), Some(SimpleKey::KEY_2)]]),
@@ -412,16 +412,16 @@ mod tests {
 
         // Simulate a key press, hold, and release.
         // Because the hold occurs in a single clock tick, we should expect just two events.
-        fx.input.events_to_read = vec![press, hold, release];
+        fx.input.events = vec![press, hold, release];
         fx.clock_tick(Instant::now());
-        assert_eq!(fx.output.output_events.len(), 2);
+        assert_eq!(fx.output.events.len(), 2);
     }
 
     fn check_noop_key(key: Box<KeyCode>) {
         let mut fx = get_test_driver(key);
-        fx.input.events_to_read = vec![KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into()];
+        fx.input.events = vec![KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into()];
         fx.clock_tick(Instant::now());
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
     }
 
     #[test]
@@ -445,17 +445,17 @@ mod tests {
 
         // Process a press event.
         let t = Instant::now();
-        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
+        fx.input.events.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
         fx.clock_tick(t);
-        assert_eq!(fx.output.output_events.len(), 0);
+        assert_eq!(fx.output.events.len(), 0);
 
         // Process a release event (this should trigger the macro).
-        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into());
+        fx.input.events.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into());
         fx.clock_tick(t);
-        assert_eq!(fx.output.output_events.len(), 4);
+        assert_eq!(fx.output.events.len(), 4);
 
         // Check that the order is press then release.
-        for i in fx.output.output_events.iter().enumerate() {
+        for i in fx.output.events.iter().enumerate() {
             if i.0 % 2 == 0 { assert_eq!(i.1.value, KeyStateChange::Pressed as i32) }
             else { assert_eq!(i.1.value, KeyStateChange::Released as i32); }
         }
@@ -472,24 +472,24 @@ mod tests {
 
         // Toggle the layer on key press.
         assert!(!fx.layer_attributes.is_enabled(1));
-        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
+        fx.input.events.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
         fx.clock_tick(Instant::now());
         assert!(fx.layer_attributes.is_enabled(1));
 
         // The layer changed on key-down. The key-press event could be registered
         // on a random key- check that we're blocking this.
-        assert!(fx.input.events_to_read.is_empty());
-        assert!(fx.output.output_events.is_empty());
-        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into());
+        assert!(fx.input.events.is_empty());
+        assert!(fx.output.events.is_empty());
+        fx.input.events.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Released).into());
         fx.clock_tick(Instant::now());
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
 
         // Suppose that the user presses the key again.
         // This should register on the second layer.
-        fx.input.events_to_read.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
+        fx.input.events.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
         fx.clock_tick(Instant::now());
-        assert_eq!(fx.output.output_events.len(), 1);
-        assert_eq!(fx.output.output_events[0].event_code, evdev::enums::EventCode::EV_KEY(plain_key));
+        assert_eq!(fx.output.events.len(), 1);
+        assert_eq!(fx.output.events[0].event_code, evdev::enums::EventCode::EV_KEY(plain_key));
     }
 
     #[test]
@@ -506,10 +506,10 @@ mod tests {
 
         // The test key enables a layer on press, and disables on release.
         assert!(!fx.layer_attributes.is_enabled(1));
-        fx.input.events_to_read.push(press);
+        fx.input.events.push(press);
         fx.clock_tick(Instant::now());
         assert!(fx.layer_attributes.is_enabled(1));
-        fx.input.events_to_read.push(release);
+        fx.input.events.push(release);
         fx.clock_tick(Instant::now());
         assert!(!fx.layer_attributes.is_enabled(1));
     }
@@ -528,14 +528,14 @@ mod tests {
 
         // Simulate a press.
         assert!(!fx.layer_attributes.is_enabled(1));
-        fx.input.events_to_read.push(press);
+        fx.input.events.push(press);
         fx.clock_tick(Instant::now());
         assert!(fx.layer_attributes.is_enabled(1));
 
         // Check that the release is blocked.
-        fx.input.events_to_read.push(release);
+        fx.input.events.push(release);
         fx.clock_tick(Instant::now());
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
     }
 
     #[test]
@@ -559,33 +559,33 @@ mod tests {
 
         // Test the quick press + release that emits a key
         // instead of modifying the layers states.
-        fx.input.events_to_read.push(press.clone());
+        fx.input.events.push(press.clone());
         fx.clock_tick(t);
         assert!(!fx.layer_attributes.is_enabled(1));
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
 
         // Release the key before it registers as a hold.
         // This should emit A (both press and release).
-        fx.input.events_to_read.push(release.clone());
+        fx.input.events.push(release.clone());
         fx.clock_tick(t + not_hold);
         assert!(!fx.layer_attributes.is_enabled(1));
-        assert_eq!(fx.output.output_events.len(), 2);
+        assert_eq!(fx.output.events.len(), 2);
 
         // Reset the output, then simulate a long pause.
-        fx.output.output_events.clear();
+        fx.output.events.clear();
         t += long_pause;
 
         // Test the press + hold + release that should enable a layer.
-        fx.input.events_to_read.push(press);
+        fx.input.events.push(press);
         fx.clock_tick(t);
         assert!(!fx.layer_attributes.is_enabled(1));
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
 
         // Release the key - it should register as being held long enough.
-        fx.input.events_to_read.push(release.clone());
+        fx.input.events.push(release.clone());
         fx.clock_tick(t + hold);
         assert!(fx.layer_attributes.is_enabled(1));
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
     }
 
     #[test]
@@ -603,14 +603,14 @@ mod tests {
 
         // The layer should be enabled on press.
         assert!(!fx.layer_attributes.is_enabled(1));
-        fx.input.events_to_read.push(press1);
+        fx.input.events.push(press1);
         fx.clock_tick(Instant::now());
         assert!(fx.layer_attributes.is_enabled(1));
 
         // The following release event shouldn't output any events.
-        fx.input.events_to_read.push(release1);
+        fx.input.events.push(release1);
         fx.clock_tick(Instant::now());
-        assert!(fx.output.output_events.is_empty());
+        assert!(fx.output.events.is_empty());
 
         // We should be able to press and release a key on the newly enabled layer.
         // The driver's missing a key in the second column - we'll add one for the test.
@@ -620,15 +620,15 @@ mod tests {
 
         // Press.
         assert!(fx.layer_attributes.is_enabled(1));
-        fx.input.events_to_read.push(press2);
+        fx.input.events.push(press2);
         fx.clock_tick(Instant::now());
-        assert_eq!(fx.output.output_events.len(), 1);
+        assert_eq!(fx.output.events.len(), 1);
         assert!(fx.layer_attributes.is_enabled(1));
 
         // Release.
-        fx.input.events_to_read.push(release2);
+        fx.input.events.push(release2);
         fx.clock_tick(Instant::now());
-        assert_eq!(fx.output.output_events.len(), 2);
+        assert_eq!(fx.output.events.len(), 2);
         assert!(!fx.layer_attributes.is_enabled(1));
     }
 
@@ -647,18 +647,18 @@ mod tests {
         let t2 = t1 + Duration::from_millis(10);
 
         // Press.
-        fx.input.events_to_read.push(press);
+        fx.input.events.push(press);
         fx.clock_tick(t0);
-        assert_eq!(fx.output.output_events.len(), 2);
+        assert_eq!(fx.output.events.len(), 2);
 
         // Hold.
         fx.clock_tick(t1);
-        assert_eq!(fx.output.output_events.len(), 3);
+        assert_eq!(fx.output.events.len(), 3);
 
         // Release.
-        fx.input.events_to_read.push(release);
+        fx.input.events.push(release);
         fx.clock_tick(t2);
-        assert_eq!(fx.output.output_events.len(), 5);
+        assert_eq!(fx.output.events.len(), 5);
 
         // Check ordering and values.
         let values = [
@@ -673,7 +673,7 @@ mod tests {
             SimpleKey::KEY_Z,
             SimpleKey::KEY_Z,
             SimpleKey::KEY_LEFTSHIFT];
-        for i in fx.output.output_events.iter().enumerate() {
+        for i in fx.output.events.iter().enumerate() {
             assert_eq!(i.1.value, values[i.0] as i32);
             assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
         }
@@ -695,12 +695,12 @@ mod tests {
         // This should result in a Z being pressed + released.
         let t = Instant::now();
         let t1 = t + Duration::from_millis(10);
-        fx.input.events_to_read.push(press);
+        fx.input.events.push(press);
         fx.clock_tick(t);
-        assert!(fx.output.output_events.is_empty());
-        fx.input.events_to_read.push(release);
+        assert!(fx.output.events.is_empty());
+        fx.input.events.push(release);
         fx.clock_tick(t1);
-        assert_eq!(fx.output.output_events.len(), 2);
+        assert_eq!(fx.output.events.len(), 2);
 
         // Check values for equality.
         let values = [
@@ -709,7 +709,7 @@ mod tests {
         let codes = [
             SimpleKey::KEY_Z,
             SimpleKey::KEY_Z];
-        for i in fx.output.output_events.iter().enumerate() {
+        for i in fx.output.events.iter().enumerate() {
             assert_eq!(i.1.value, values[i.0] as i32);
             assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
         }
@@ -735,11 +735,11 @@ mod tests {
         let t = Instant::now();
         let event_sequence = [press1, press2.clone(), release2.clone(), press2, release2, release1];
         for i in event_sequence.iter().enumerate() {
-            fx.input.events_to_read.push(i.1.clone());
+            fx.input.events.push(i.1.clone());
             fx.clock_tick(t + (i.0 as u32) * Duration::from_millis(10));
         }
 
-        assert_eq!(fx.output.output_events.len(), 6);
+        assert_eq!(fx.output.events.len(), 6);
 
         // Check the sequence of output events.
         let values = [
@@ -756,7 +756,7 @@ mod tests {
             SimpleKey::KEY_Y,
             SimpleKey::KEY_Y,
             SimpleKey::KEY_LEFTSHIFT];
-        for i in fx.output.output_events.iter().enumerate() {
+        for i in fx.output.events.iter().enumerate() {
             assert_eq!(i.1.value, values[i.0] as i32);
             assert_eq!(i.1.event_code, evdev::enums::EventCode::EV_KEY(codes[i.0].clone()));
         }
