@@ -45,7 +45,6 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
     }
 
     fn matrix_state_changed(&mut self, idx: Index2D, state: KeyStateChange, now: Instant) {
-
         // Starting at the highest enabled layer, find the first key that's
         // not transparent.
         let l = self.layered_codes.len();
@@ -68,7 +67,6 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
                 }
             }
         }
-        println!("Reached bottom of stack without hitting a key.");
     }
 
     /// Verify that the driver layers are compatible.
@@ -139,9 +137,3 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
         }
     }
 }
-
-
-
-
-
-
