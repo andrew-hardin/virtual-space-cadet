@@ -27,6 +27,9 @@ impl TestIOKeyboard {
 impl InputKeyboard for TestIOKeyboard {
     fn read_events(&mut self) -> Vec<evdev::InputEvent> {
         let ans = self.events_to_read.clone();
+        for i in ans.iter() {
+            self.input_stats.increment(i.value.into());
+        }
         self.events_to_read = Vec::new();
         ans
     }
@@ -35,6 +38,7 @@ impl InputKeyboard for TestIOKeyboard {
 
 impl OutputKeyboard for TestIOKeyboard {
     fn send_override(&mut self, e: evdev::InputEvent, _bypass_buffer: bool) {
+        self.output_stats.increment(e.value.into());
         self.output_events.push(e);
     }
     fn set_buffer(&mut self, _buffer: EventBuffer) { }
