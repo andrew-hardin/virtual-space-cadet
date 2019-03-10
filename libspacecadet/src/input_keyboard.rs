@@ -46,17 +46,19 @@ impl InputKeyboard for EvdevKeyboard {
     fn read_events(&mut self) -> Vec<evdev::InputEvent> {
         let mut ans= Vec::new();
         loop {
-            // TODO: based on the library example, there may be an
-            //       edge case related to sync that's not being handled.
-            let a = self.device.next_event(evdev::NORMAL);
-            match a {
+            match self.device.next_event(evdev::NORMAL) {
                 Ok(k) => {
-                    // We only forward on EV_KEY events.
-                    match k.1.event_type {
-                        evdev::enums::EventType::EV_KEY => { ans.push(k.1); }
-                        _ => ()
+                    match k.0 {
+                        evdev::ReadStatus::Success => {
+                            match k.1.event_type {
+                                evdev::enums::EventType::EV_KEY => { ans.push(k.1); }
+                                _ => (/* We only handle EV_KEY events */)
+                            }
+                        }
+                        evdev::ReadStatus::Sync => {
+                            panic!("Unhandled SYNC read status received.");
+                        }
                     }
-
                 }
                 Err(_) => break
             }
