@@ -31,22 +31,21 @@ pub struct UInputKeyboard {
 
 impl UInputKeyboard {
     /// Create a new uinput device with an optional name.
-    pub fn new(device_name: Option<String>) -> UInputKeyboard {
+    pub fn new(device_name: Option<String>) -> Result<UInputKeyboard, uinput::Error> {
         let name = match device_name {
             Some(t) => t,
             None => "spacecadet".to_string()
         };
-        let device = uinput::default().unwrap()
-            .name(name).unwrap()
-            .event(uinput::event::Keyboard::All).unwrap()
-            .create().unwrap();
-
-        UInputKeyboard {
+        let device = uinput::default()?
+            .name(name)?
+            .event(uinput::event::Keyboard::All)?
+            .create()?;
+        Ok(UInputKeyboard {
             device,
             evdev_to_uinput: EvdevToUinput::new(),
             event_buffer: EventBuffer::new(),
             stats: KeyStats::new(),
-        }
+        })
     }
 
     /// Send an event to the output keyboard without buffering.

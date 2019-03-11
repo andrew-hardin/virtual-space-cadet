@@ -19,24 +19,37 @@ pub struct EvdevKeyboard {
 impl EvdevKeyboard {
     /// Open an input keyboard. Behind the scenes we're opening a
     /// non-blocking file descriptor and constructing an evdev device.
-    pub fn open(path: &str) -> EvdevKeyboard {
+    pub fn open(path: &str) -> Result<EvdevKeyboard, String> {
         use std::fs::OpenOptions;
         use std::os::unix::fs::OpenOptionsExt;
         let file_descriptor = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NONBLOCK)
-            .open(path)
-            .unwrap();
+            .open(path);
 
-        let mut device = evdev::Device::new_from_fd(&file_descriptor).unwrap();
-        device.grab(evdev::GrabMode::Grab).unwrap();
+        match file_descriptor {
+            Ok(fd) => {
+                let mut device = evdev::Device::new_from_fd(&fd).unwrap();
 
-        EvdevKeyboard {
-            _file_descriptor: file_descriptor,
-            device,
-            stats: KeyStats::new(),
+                // Check that the device supports keys.
+                if device.has(&evdev::enums::EventType::EV_KEY) {
+                    device.grab(evdev::GrabMode::Grab).unwrap();
+
+                    Ok(EvdevKeyboard {
+                        _file_descriptor: fd,
+                        device,
+                        stats: KeyStats::new(),
+                    })
+                } else {
+                    Err(format!("Device isn't a keyboard: \"{}\" doesn't support EV_KEY events.", path))
+                }
+            }
+            Err(e) => {
+                Err(format!("{} on {}", e.to_string(), path))
+            }
         }
     }
+
 }
 
 impl InputKeyboard for EvdevKeyboard {
