@@ -397,7 +397,7 @@ mod tests {
             output: TestOutputKeyboard::new(),
             layer_attributes: layers,
             layered_codes: layer_codes,
-            matrix: VirtualKeyboardMatrix::new(vec![vec![Some(SimpleKey::KEY_1), Some(SimpleKey::KEY_2)]]),
+            matrix: VirtualKeyboardMatrix::new(vec![vec![Some(SimpleKey::KEY_1), Some(SimpleKey::KEY_2)]], None),
         }
     }
 

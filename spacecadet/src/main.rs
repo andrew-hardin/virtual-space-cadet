@@ -55,7 +55,7 @@ fn main() {
     let mut f = KeyboardDriver {
         input,
         output,
-        matrix: VirtualKeyboardMatrix::new(get_keypad_matrix()),
+        matrix: VirtualKeyboardMatrix::new(get_keypad_matrix(), Some(VirtualKeyboardMatrix::default_hold_duration())),
         layered_codes: Vec::new(),
         layer_attributes: LayerCollection::new(),
     };

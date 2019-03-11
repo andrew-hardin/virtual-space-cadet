@@ -127,7 +127,6 @@ pub struct VirtualKeyboardMatrix {
     dim: Index2D,
     state: StateMatrix,
     blocked: Vec<Vec<BlockedKeyStates>>,
-    // TODO: figure out how to expose this parameter.
     hold_down_threshold: Duration
 }
 
@@ -136,7 +135,7 @@ impl VirtualKeyboardMatrix {
     /// at which positions in the matrix.
     ///
     /// For example, `KEY_A` is at row 3, column 2.
-    pub fn new(keys: KeyMatrix) -> VirtualKeyboardMatrix {
+    pub fn new(keys: KeyMatrix, hold_duration: Option<Duration>) -> VirtualKeyboardMatrix {
 
         // Loop through the event matrix and store a map from event -> index.
         let dim = (keys.len(), keys[0].len());
@@ -153,14 +152,21 @@ impl VirtualKeyboardMatrix {
             }
         }
 
+        let hold = match hold_duration {
+            Some(v) => v,
+            None => VirtualKeyboardMatrix::default_hold_duration()
+        };
+
         VirtualKeyboardMatrix {
             key_to_index: hash,
             dim,
             state: StateMatrix::new(dim),
             blocked: vec![vec![BlockedKeyStates::new(); dim.1]; dim.0],
-            hold_down_threshold: Duration::from_millis(200),
+            hold_down_threshold: hold,
         }
     }
+
+    pub fn default_hold_duration() -> Duration { Duration::from_millis(200) }
 
     /// Get the dimensions of the matrix.
     pub fn dim(&self) -> Index2D {
@@ -380,7 +386,7 @@ mod tests {
         VirtualKeyboardMatrix::new(vec![
             vec![Some(keys::SimpleKey::KEY_4), Some(keys::SimpleKey::KEY_5), None],
             vec![Some(keys::SimpleKey::KEY_1), Some(keys::SimpleKey::KEY_2), Some(keys::SimpleKey::KEY_3)]
-        ])
+        ], None)
     }
 
     // Short-hand for checking if v is a specific enum variant.
