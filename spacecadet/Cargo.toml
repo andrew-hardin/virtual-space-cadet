@@ -6,3 +6,12 @@ edition = "2018"
 
 [dependencies]
 libspacecadet = {path = "../libspacecadet"}
+evdev-rs = {path = "/home/andrew/Desktop/evdev-rs"}
+
+[[bin]]
+name = "spacecadet"
+path = "src/main.rs"
+
+[[bin]]
+name = "matrix_collector"
+path = "src/matrix_collector.rs"

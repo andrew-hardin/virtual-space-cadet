@@ -183,6 +183,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "spacecadet"
 version = "0.1.0"
 dependencies = [
+ "evdev-rs 0.1.0",
  "libspacecadet 0.1.0",
 ]
 
