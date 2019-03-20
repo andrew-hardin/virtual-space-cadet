@@ -4,10 +4,12 @@ use crate::virtual_keyboard_matrix::{KeyStateChange, VirtualKeyboardMatrix};
 use crate::virtual_keyboard_matrix::Index2D;
 use crate::layer::ScheduledLayerEvent;
 
-pub use evdev::enums::EV_KEY as SimpleKey;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
+pub use evdev::enums::EV_KEY as SimpleKey;
 use crate::virtual_keyboard_matrix::BlockedKeyStates;
 use crate::output_keyboard::{EventBuffer, OutputKeyboard};
+use crate::parser::*;
 
 /// The context/state surrounding a key event (e.g. press).
 pub struct KeyEventContext<'a> {
@@ -47,35 +49,96 @@ pub enum KeyConstraint {
 
 /// The primary interface for custom keys (e.g. macros or layer toggles).
 pub trait KeyCode {
-
     /// React to a `KeyStateChange` event (e.g. the key was pressed).
-    fn handle_event(&mut self, _ctx: &mut KeyEventContext, _state: KeyStateChange) { }
+    fn handle_event(&mut self, _ctx: &mut KeyEventContext, _state: KeyStateChange) {}
 
     /// Check if the key is transparent (i.e. a pass-through to the key in the next lower layer).
     fn is_transparent(&self) -> bool { false }
 
     /// Get any constraints the key may have.
-    fn get_constraints(&self) -> Vec<KeyConstraint> {
-        vec![]
+    fn get_constraints(&self) -> Vec<KeyConstraint> { vec![] }
+}
+
+
+impl FromStr for Box<KeyCode> {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parsed = ParsedKeyTree::create(s)?;
+        convert_tokens_to_key(&parsed)
     }
 }
 
 
 /// A key that's transparent; a pass-through to the key below it in the layer hierarchy.
 pub struct TransparentKey {}
+impl TransparentKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<TransparentKey, String> {
+        if !item.args.is_empty() {
+            Err("Transparent keys don't have arguments".to_string())
+        } else if item.identifier.chars().all(|x| x == '_') {
+            Ok(TransparentKey{})
+        } else if item.identifier == "KC_TRANS" {
+            Ok(TransparentKey{})
+        } else {
+            Err("Not a transparent key.".to_string())
+        }
+    }
+}
 impl KeyCode for TransparentKey {
     fn is_transparent(&self) -> bool { true }
 }
 
-impl KeyCode for SimpleKey {
-    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
-        ctx.output_device.send(KeyState(self.clone(), state).into());
-    }
-}
-
 /// A key that's the opposite of transparent; a no-op key that doesn't act on any events.
 pub struct OpaqueKey;
-impl KeyCode for OpaqueKey { }
+impl OpaqueKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<OpaqueKey, String> {
+        if !item.args.is_empty() {
+            Err("Opaque keys don't have arguments".to_string())
+        } else if item.identifier.chars().all(|x| x == 'X') {
+            Ok(OpaqueKey{})
+        } else if item.identifier == "KC_OPAQUE" {
+            Ok(OpaqueKey{})
+        } else {
+            Err("Not an opaque key.".to_string())
+        }
+    }
+}
+impl KeyCode for OpaqueKey {}
+
+#[derive(Clone)]
+pub struct NormalKey {
+    pub value: evdev::enums::EV_KEY
+}
+impl KeyCode for NormalKey {
+    fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
+        ctx.output_device.send(KeyState(self.value.clone(), state).into());
+    }
+}
+impl NormalKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<NormalKey, String> {
+        if !item.args.is_empty() {
+            Err("Simple keys don't have arguments".to_string())
+        } else {
+            // Transform KC_Q into KEY_Q.
+            let split : Vec<&str> = item.identifier.split('_').collect();
+            if split.len() == 1 {
+                Err("Missing an \"_\" character.".to_string())
+            } else if split.len() > 2 {
+                Err("Too many \"_\" characters.".to_string())
+            } else {
+                let trial = ("KEY_".to_string() + split[1]).to_uppercase();
+                let v = evdev::enums::EventCode::from_str(&evdev::enums::EventType::EV_KEY, &trial);
+                match v {
+                    Some(v) => match v {
+                        evdev::enums::EventCode::EV_KEY(k) => Ok(NormalKey { value : k }),
+                        _ => Err("Key code was converted to an event, but it wasn't an EV_KEY.".to_string())
+                    },
+                    None => Err("Couldn't convert \"".to_string() + &trial + "\" to an evdev key.")
+                }
+            }
+        }
+    }
+}
 
 
 /// A key that's a collection of other simple keys that are quickly pressed sequentially.
@@ -83,7 +146,7 @@ pub struct MacroKey {
     /// When to play the macro (e.g. when the key is pressed or released).
     pub play_macro_when: KeyStateChange,
     /// The collection of keys to play.
-    pub keys: Vec<SimpleKey>,
+    pub keys: Vec<NormalKey>,
 }
 
 impl KeyCode for MacroKey {
@@ -96,12 +159,54 @@ impl KeyCode for MacroKey {
         }
     }
 }
+impl MacroKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<MacroKey, String> {
+        if item.identifier != "MACRO" {
+            Err("Wrong identifier.".to_string())
+        } else {
+            let mut ans = MacroKey {
+                play_macro_when: KeyStateChange::Pressed,
+                keys: vec![]
+            };
+
+            for i in item.args.iter() {
+                let converted = NormalKey::from_tokens(i)?;
+                ans.keys.push(converted)
+            }
+            Ok(ans)
+        }
+    }
+}
+
+
+/// Shorthand for keys whose only argument is a layer name.
+fn expecting_just_layer_arg(item: &ParsedKeyTree) -> Result<String, String> {
+    if item.args.is_empty() {
+        Err("Missing layer name.".to_string())
+    } else if item.args.len() > 2 {
+        Err("Too many arguments.".to_string())
+    } else if item.args[0].args.is_empty() {
+        Err("Layer name doesn't have arguments".to_string())
+    } else {
+        Ok(item.args[0].identifier.to_string())
+    }
+}
 
 
 /// A key that toggles a layer on or off.
 pub struct ToggleLayerKey {
     /// Name of the layer to toggle.
     pub layer_name: String
+}
+
+impl ToggleLayerKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<ToggleLayerKey, String> {
+        if item.identifier != "TG" {
+            Err("Wrong identifier.".to_string())
+        } else {
+            Ok(ToggleLayerKey { layer_name: expecting_just_layer_arg(item)? })
+        }
+    }
 }
 
 impl KeyCode for ToggleLayerKey {
@@ -124,6 +229,16 @@ pub struct MomentarilyEnableLayerKey {
     pub layer_name: String
 }
 
+impl MomentarilyEnableLayerKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<MomentarilyEnableLayerKey, String> {
+        if item.identifier != "MO" {
+            Err("Wrong identifier.".to_string())
+        } else {
+            Ok(MomentarilyEnableLayerKey { layer_name: expecting_just_layer_arg(item)? })
+        }
+    }
+}
+
 impl KeyCode for MomentarilyEnableLayerKey {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
@@ -142,12 +257,22 @@ impl KeyCode for MomentarilyEnableLayerKey {
 
 
 /// A key than enables a layer.
-pub struct EnableLayerKey {
+pub struct ActivateLayerKey {
     /// Name of the layer to enable.
     pub layer_name: String
 }
 
-impl KeyCode for EnableLayerKey {
+impl ActivateLayerKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<ActivateLayerKey, String> {
+        if item.identifier != "AL" {
+            Err("Wrong identifier.".to_string())
+        } else {
+            Ok(ActivateLayerKey { layer_name: expecting_just_layer_arg(item)? })
+        }
+    }
+}
+
+impl KeyCode for ActivateLayerKey {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Pressed => {
@@ -171,14 +296,14 @@ impl KeyCode for EnableLayerKey {
 /// A key than enables a layer when held, but emits a simple key when pressed + released quickly.
 pub struct HoldEnableLayerPressKey {
     layer_name: String,
-    key: SimpleKey,
+    key: NormalKey,
     pressed_at: Instant,
     hold_threshold: Duration,
 }
 
 impl HoldEnableLayerPressKey {
     /// Create a new key by specifying the layer to change on hold and the key to emit when pressed + released.
-    pub fn new(layer_name: &str, key: SimpleKey, hold_threshold: Duration) -> HoldEnableLayerPressKey {
+    pub fn new(layer_name: &str, key: NormalKey, hold_threshold: Duration) -> HoldEnableLayerPressKey {
         HoldEnableLayerPressKey {
             layer_name: layer_name.to_string(),
             key,
@@ -190,6 +315,21 @@ impl HoldEnableLayerPressKey {
     fn is_held_long_enough(&self, now: Instant) -> bool {
         let delta = now.duration_since(self.pressed_at);
         delta > self.hold_threshold
+    }
+
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<HoldEnableLayerPressKey, String> {
+        if item.identifier != "LT" {
+            Err("Wrong identifier.".to_string())
+        } else if item.args.len() != 3 {
+            Err("Wrong number of arguments.".to_string())
+        } else {
+            // Get a layer name.
+            let layer_name = item.args[0].identifier;
+            let key = NormalKey::from_tokens(&item.args[1])?;
+            let duration_ms = item.args[2].identifier.parse();
+            let duration_ms = duration_ms.or(Err("Couldn't convert duration to milliseconds".to_string()))?;
+            Ok(HoldEnableLayerPressKey::new(layer_name, key, Duration::from_millis(duration_ms)))
+        }
     }
 }
 
@@ -231,6 +371,16 @@ pub struct OneShotLayer {
     pub layer_name: String
 }
 
+impl OneShotLayer {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<OneShotLayer, String> {
+        if item.identifier != "OSL" {
+            Err("Wrong identifier.".to_string())
+        } else {
+            Ok(OneShotLayer { layer_name: expecting_just_layer_arg(item)? })
+        }
+    }
+}
+
 impl KeyCode for OneShotLayer {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
@@ -268,26 +418,41 @@ impl KeyCode for OneShotLayer {
 }
 
 
-/// A key wrapped with a modifier. The modifier is pressed,
-/// the `KeyCode` is pressed and released, then the modifier is released.
-pub struct ModifierWrappedKey {
-    pub key: Box<KeyCode>,
-    pub modifier: SimpleKey,
+/// A key wrapped with another key (e.g. SHIFT). The wrap key is pressed,
+/// the `KeyCode` is pressed and released, then wrap is released.
+pub struct WrappedKey {
+    pub inside: Box<KeyCode>,
+    pub outside: NormalKey,
 }
 
-impl KeyCode for ModifierWrappedKey {
+impl WrappedKey {
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<WrappedKey, String> {
+        if item.identifier != "WRAP" {
+            Err("Wrong identifier.".to_string())
+        } else if item.args.len() != 2 {
+            Err("Wrong number of arguments.".to_string())
+        } else {
+            Ok(WrappedKey {
+                outside: NormalKey::from_tokens(&item.args[0])?,
+                inside: convert_tokens_to_key(&item.args[1])?
+            })
+        }
+    }
+}
+
+impl KeyCode for WrappedKey {
     fn handle_event(&mut self, ctx: &mut KeyEventContext, state: KeyStateChange) {
         match state {
             KeyStateChange::Pressed => {
-                self.modifier.handle_event(ctx, state);
-                self.key.handle_event(ctx, state);
+                self.outside.handle_event(ctx, state);
+                self.inside.handle_event(ctx, state);
             }
             KeyStateChange::Held => {
-                self.key.handle_event(ctx, state);
+                self.inside.handle_event(ctx, state);
             }
             KeyStateChange::Released => {
-                self.key.handle_event(ctx, state);
-                self.modifier.handle_event(ctx, state);
+                self.inside.handle_event(ctx, state);
+                self.outside.handle_event(ctx, state);
             }
         }
     }
@@ -299,21 +464,34 @@ impl KeyCode for ModifierWrappedKey {
 ///
 /// The classic example is `SHIFT` when the cord contains another key, but `(` when tapped.
 pub struct SpaceCadet {
-    key_when_tapped: Box<KeyCode>,
-    modifier: SimpleKey,
+    when_tapped: Box<KeyCode>,
+    when_held: NormalKey,
     number_of_keys_pressed: u32
 }
 
 impl SpaceCadet {
-    pub fn new_from_key(when_tapped: SimpleKey, modifier: SimpleKey) -> SpaceCadet {
+    pub fn new_from_key(when_tapped: NormalKey, modifier: NormalKey) -> SpaceCadet {
         SpaceCadet::new(Box::new(when_tapped), modifier)
     }
 
-    pub fn new(when_tapped: Box<KeyCode>, modifier: SimpleKey) -> SpaceCadet {
+    pub fn new(when_tapped: Box<KeyCode>, modifier: NormalKey) -> SpaceCadet {
         SpaceCadet {
-            key_when_tapped: when_tapped,
-            modifier,
+            when_tapped,
+            when_held: modifier,
             number_of_keys_pressed: 0
+        }
+    }
+
+    pub fn from_tokens(item: &ParsedKeyTree) -> Result<SpaceCadet, String> {
+        if item.identifier != "SPACECADET" {
+            Err("Wrong identifier.".to_string())
+        } else if item.args.len() != 2 {
+            Err("Wrong number of arguments.".to_string())
+        } else {
+            Ok(SpaceCadet::new(
+                convert_tokens_to_key(&item.args[0])?,
+                NormalKey::from_tokens(&item.args[1])?
+            ))
         }
     }
 }
@@ -336,7 +514,7 @@ impl KeyCode for SpaceCadet {
                 // Record how many keys have been pressed, then send a pressed event.
                 // Because the buffer is active, this press won't increment any stats yet.
                 self.number_of_keys_pressed = ctx.output_device.get_stats().get(KeyStateChange::Pressed);
-                self.modifier.handle_event(ctx, KeyStateChange::Pressed);
+                self.when_held.handle_event(ctx, KeyStateChange::Pressed);
             }
             KeyStateChange::Released => {
                 // Was the key pressed and released without any other keys being struck?
@@ -348,20 +526,21 @@ impl KeyCode for SpaceCadet {
                     ctx.output_device.set_buffer(EventBuffer::new());
 
                     // Then send a PRESS + RELEASE for the key.
-                    self.key_when_tapped.handle_event(ctx, KeyStateChange::Pressed);
-                    self.key_when_tapped.handle_event(ctx, KeyStateChange::Released);
+                    self.when_tapped.handle_event(ctx, KeyStateChange::Pressed);
+                    self.when_tapped.handle_event(ctx, KeyStateChange::Released);
 
                 } else {
                     // Other keys were pressed since this key was pressed.
                     // We trust the driver to handle the key we placed in the spacecadet buffer.
                     // We'll send the closing release event for the modifier.
-                    self.modifier.handle_event(ctx, KeyStateChange::Released);
+                    self.when_held.handle_event(ctx, KeyStateChange::Released);
                 }
             }
             KeyStateChange::Held => {}
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -402,8 +581,8 @@ mod tests {
     }
 
     #[test]
-    fn simple_key() {
-        let mut fx = get_test_driver(Box::new(SimpleKey::KEY_A));
+    fn normal_key() {
+        let mut fx = get_test_driver(Box::new(NormalKey { value: SimpleKey::KEY_A }));
 
         let position: SimpleKey = SimpleKey::KEY_1;
         let press : evdev::InputEvent = KeyState(position.clone(), KeyStateChange::Pressed).into();
@@ -439,7 +618,7 @@ mod tests {
         // Construct a driver with a single macro key.
         let key = MacroKey {
             play_macro_when: KeyStateChange::Released,
-            keys: vec![SimpleKey::KEY_H, SimpleKey::KEY_I]
+            keys: vec![NormalKey { value: SimpleKey::KEY_H }, NormalKey { value: SimpleKey::KEY_I }]
         };
         let mut fx = get_test_driver(Box::new(key));
 
@@ -465,7 +644,7 @@ mod tests {
     fn toggle_layer_key() {
         // Create a driver with a toggle layer key on layer_0, and a simple key on layer_1
         let key = ToggleLayerKey { layer_name: "layer_1".to_string() };
-        let plain_key = SimpleKey::KEY_A;
+        let plain_key = NormalKey { value: SimpleKey::KEY_A };
         let mut fx = get_test_driver_multilayer(
             vec![Box::new(key), Box::new(plain_key.clone())]
         );
@@ -489,7 +668,7 @@ mod tests {
         fx.input.events.push(KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into());
         fx.clock_tick(Instant::now());
         assert_eq!(fx.output.events.len(), 1);
-        assert_eq!(fx.output.events[0].event_code, evdev::enums::EventCode::EV_KEY(plain_key));
+        assert_eq!(fx.output.events[0].event_code, evdev::enums::EventCode::EV_KEY(plain_key.value));
     }
 
     #[test]
@@ -515,10 +694,10 @@ mod tests {
     }
 
     #[test]
-    fn enable_layer_key() {
+    fn activate_layer_key() {
         // Setup the test driver.
-        let test_key = EnableLayerKey { layer_name: "layer_1".to_string() };
-        let plain_key = SimpleKey::KEY_A;
+        let test_key = ActivateLayerKey { layer_name: "layer_1".to_string() };
+        let plain_key = NormalKey { value: SimpleKey::KEY_A };
         let mut fx = get_test_driver_multilayer(
             vec![Box::new(test_key), Box::new(plain_key.clone())]
         );
@@ -548,8 +727,8 @@ mod tests {
         let mut t = Instant::now();
 
         // Configure the driver.
-        let test_key = HoldEnableLayerPressKey::new("layer_1", SimpleKey::KEY_A, theshold);
-        let plain_key = SimpleKey::KEY_B;
+        let test_key = HoldEnableLayerPressKey::new("layer_1", NormalKey { value: SimpleKey::KEY_A }, theshold);
+        let plain_key = NormalKey { value: SimpleKey::KEY_B };
         let mut fx = get_test_driver_multilayer(
             vec![Box::new(test_key), Box::new(plain_key)]
         );
@@ -593,7 +772,7 @@ mod tests {
         let test_key = OneShotLayer {
             layer_name: "layer_1".to_string()
         };
-        let plain_key = SimpleKey::KEY_B;
+        let plain_key = NormalKey { value: SimpleKey::KEY_B };
         let mut fx = get_test_driver_multilayer(
             vec![Box::new(test_key), Box::new(plain_key)]
         );
@@ -614,7 +793,7 @@ mod tests {
 
         // We should be able to press and release a key on the newly enabled layer.
         // The driver's missing a key in the second column - we'll add one for the test.
-        fx.layered_codes[1].codes[0][1] = Box::new(SimpleKey::KEY_Z);
+        fx.layered_codes[1].codes[0][1] = Box::new(NormalKey { value : SimpleKey::KEY_Z });
         let press2 : evdev::InputEvent = KeyState(SimpleKey::KEY_2, KeyStateChange::Pressed).into();
         let release2 : evdev::InputEvent = KeyState(SimpleKey::KEY_2, KeyStateChange::Released).into();
 
@@ -634,9 +813,9 @@ mod tests {
 
     #[test]
     fn modifier_wrapped_key() {
-        let test_key = ModifierWrappedKey {
-            key: Box::new(SimpleKey::KEY_Z),
-            modifier: SimpleKey::KEY_LEFTSHIFT,
+        let test_key = WrappedKey {
+            inside: Box::new(NormalKey { value: SimpleKey::KEY_Z }),
+            outside: NormalKey { value: SimpleKey::KEY_LEFTSHIFT },
         };
         let mut fx = get_test_driver(Box::new(test_key));
         let press : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
@@ -684,8 +863,8 @@ mod tests {
 
         // Setup the driver.
         let test_key = SpaceCadet::new_from_key(
-            SimpleKey::KEY_Z,
-            SimpleKey::KEY_LEFTSHIFT);
+            NormalKey { value: SimpleKey::KEY_Z },
+            NormalKey { value: SimpleKey::KEY_LEFTSHIFT });
         let mut fx = get_test_driver(Box::new(test_key));
 
         let press : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
@@ -720,10 +899,10 @@ mod tests {
 
         // Setup the driver.
         let test_key = SpaceCadet::new_from_key(
-            SimpleKey::KEY_Z,
-            SimpleKey::KEY_LEFTSHIFT);
+            NormalKey { value: SimpleKey::KEY_Z },
+            NormalKey { value: SimpleKey::KEY_LEFTSHIFT });
         let mut fx = get_test_driver(Box::new(test_key));
-        fx.layered_codes[0].codes[0][1] = Box::new(SimpleKey::KEY_Y);
+        fx.layered_codes[0].codes[0][1] = Box::new(NormalKey { value: SimpleKey::KEY_Y });
 
         let press1 : evdev::InputEvent = KeyState(SimpleKey::KEY_1, KeyStateChange::Pressed).into();
         let release1 : evdev::InputEvent = KeyState( SimpleKey::KEY_1, KeyStateChange::Released).into();

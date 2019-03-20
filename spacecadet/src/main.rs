@@ -12,21 +12,12 @@ fn get_keypad_matrix() -> KeyMatrix {
 }
 
 fn base_layer_keys() -> KeyCodeMatrix {
-    let left_paren = Box::new(ModifierWrappedKey {
-        key: Box::new(SimpleKey::KEY_9),
-        modifier: SimpleKey::KEY_LEFTSHIFT
-    });
-    let right_paren = Box::new(ModifierWrappedKey {
-        key: Box::new(SimpleKey::KEY_0),
-        modifier: SimpleKey::KEY_RIGHTSHIFT
-    });
-
     let mut ans = KeyCodeMatrix::new((5, 1));
-    ans.codes[0][0] = Box::new(SimpleKey::KEY_CAPSLOCK);
-    ans.codes[1][0] = Box::new(SimpleKey::KEY_ESC);
-    ans.codes[2][0] = Box::new(SimpleKey::KEY_TAB);
-    ans.codes[3][0] = Box::new(SpaceCadet::new(left_paren, SimpleKey::KEY_LEFTSHIFT));
-    ans.codes[4][0] = Box::new(SpaceCadet::new(right_paren, SimpleKey::KEY_RIGHTSHIFT));
+    ans.codes[0][0] = "KC_CAPSLOCK".parse().unwrap();
+    ans.codes[1][0] = "KC_ESC".parse().unwrap();
+    ans.codes[2][0] = "KC_TAB".parse().unwrap();
+    ans.codes[3][0] = "SPACECADET(WRAP(KC_LEFTSHIFT, KC_9), KC_LEFTSHIFT)".parse().unwrap();
+    ans.codes[4][0] = "SPACECADET(WRAP(KC_RIGHTSHIFT, KC_0), KC_RIGHTSHIFT)".parse().unwrap();
     ans
 }
 
