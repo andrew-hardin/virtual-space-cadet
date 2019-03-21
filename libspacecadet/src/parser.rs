@@ -305,3 +305,61 @@ pub fn convert_tokens_to_key(v: &ParsedKeyTree) -> Result<Box<KeyCode>, String> 
 
     Err("Failed to convert key tree into a key.".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_token_failures() {
+        // These are random assortment of cases that shouldn't be parsed.
+        assert!(!RawToken::create(",key").is_ok());
+        assert!(!RawToken::create("key(,)").is_ok());
+        assert!(!RawToken::create("()").is_ok());
+        assert!(!RawToken::create("key(arg1,, arg2)").is_ok());
+        assert!(!RawToken::create("key(arg1(arg2)()").is_ok());
+        assert!(!RawToken::create("key(arg1(arg2, arg3(arg4),))").is_ok());
+        assert!(!RawToken::create("key(,arg1)").is_ok());
+        assert!(!RawToken::create("key(arg1))").is_ok());
+    }
+
+    #[test]
+    fn parsed_key_tree_successes() {
+        // These are a random assortment of cases that should be parsed.
+        assert!(ParsedKeyTree::create("key").is_ok());
+        assert!(ParsedKeyTree::create("key()").is_ok());
+        assert!(ParsedKeyTree::create("key(arg1)").is_ok());
+        assert!(ParsedKeyTree::create("key(arg1, arg2)").is_ok());
+        assert!(ParsedKeyTree::create("key(arg1(arg2))").is_ok());
+        assert!(ParsedKeyTree::create("key(arg1(arg2, arg3(arg4)))").is_ok());
+        assert!(ParsedKeyTree::create("key(arg1)").is_ok());
+    }
+
+    #[test]
+    fn parsed_key_tree_complex() {
+        let k = "key(a, b(), c(d,e), f(g(h(i))))";
+        let v = ParsedKeyTree::create(k);
+        assert!(v.is_ok());
+        let v = v.unwrap();
+
+        assert_eq!(v.identifier, "key");
+        assert_eq!(v.args.len(), 4);
+        assert_eq!(v.args[0].identifier, "a");
+        assert_eq!(v.args[0].args.len(), 0);
+        assert_eq!(v.args[1].identifier, "b");
+        assert_eq!(v.args[1].args.len(), 0);
+        assert_eq!(v.args[2].identifier, "c");
+        assert_eq!(v.args[2].args.len(), 2);
+        assert_eq!(v.args[2].args[0].identifier, "d");
+        assert_eq!(v.args[2].args[1].identifier, "e");
+        assert_eq!(v.args[2].args[0].args.len(), 0);
+        assert_eq!(v.args[2].args[1].args.len(), 0);
+
+        // Stepping into the nested args is painful.
+        assert_eq!(v.args[3].identifier, "f");
+        assert_eq!(v.args[3].args[0].identifier, "g");
+        assert_eq!(v.args[3].args[0].args[0].identifier, "h");
+        assert_eq!(v.args[3].args[0].args[0].args[0].identifier, "i");
+        assert_eq!(v.args[3].args[0].args[0].args[0].args.len(), 0);
+    }
+}
