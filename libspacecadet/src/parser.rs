@@ -79,7 +79,7 @@ impl<'a> RawToken<'a> {
                     let start_idx = delimited[i].0 + 1;
                     let stop_idx = if i < delimited.len() - 1 { delimited[i + 1].0 } else { delimited.len() };
                     if start_idx < stop_idx {
-                        ans.push(RawToken::Identifier(&v[start_idx..stop_idx]));
+                        ans.push(RawToken::Identifier(&v[start_idx..stop_idx].trim()));
                     }
                 }
             }
