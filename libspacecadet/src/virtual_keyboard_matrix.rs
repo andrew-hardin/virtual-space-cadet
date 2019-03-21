@@ -356,12 +356,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn key_state_change_conversion() {
         assert_eq!(KeyStateChange::Pressed, 1.into());
         assert_eq!(KeyStateChange::Released, 0.into());
         assert_eq!(KeyStateChange::Held, 2.into());
-        let _panic: KeyStateChange = 10.into();
     }
 
     #[test]
