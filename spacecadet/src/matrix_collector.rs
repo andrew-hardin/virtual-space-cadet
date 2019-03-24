@@ -1,8 +1,48 @@
 use evdev_rs as evdev;
 use std::io::Write;
 use std::fs::File;
+use clap::{Arg, App};
+
+struct ParsedArgs {
+    device_path: String,
+    matrix_path: String,
+    layer_path: String,
+}
+impl ParsedArgs {
+    fn create() -> ParsedArgs {
+        let matches = App::new("Matrix Collector")
+            .version("1.0")
+            .arg(Arg::with_name("device")
+                .short("d")
+                .long("device")
+                .value_name("DEV")
+                .required(true)
+                .help("The path of a keyboard device.")
+                .takes_value(true   ))
+            .arg(Arg::with_name("matrix")
+                .short("m")
+                .long("matrix")
+                .value_name("FILE")
+                .help("The path to output matrix file.")
+                .takes_value(true))
+            .arg(Arg::with_name("layer")
+                .short("l")
+                .long("layer")
+                .value_name("FILE")
+                .help("The path to output layer file.")
+                .takes_value(true))
+            .get_matches();
+        ParsedArgs {
+            device_path: matches.value_of("device").unwrap().to_string(),
+            matrix_path: matches.value_of("matrix").unwrap_or("matrix.json").to_string(),
+            layer_path: matches.value_of("layer").unwrap_or("layers.json").to_string(),
+        }
+    }
+}
 
 fn main() {
+    let args = ParsedArgs::create();
+
     let instructions =
         "Matrix Collector\n\
         ----------------\n\
@@ -20,13 +60,8 @@ fn main() {
         \tThree taps -> finish\n";
     println!("{}", instructions);
 
-    // TODO: parse command line.
-    let device_path = "/dev/input/event4";
-    let matrix_path = "/tmp/matrix.json";
-    let layer_path = "/tmp/layers.json";
-
     // Collect the matrix via user input.
-    let matrix = collect_matrix(device_path);
+    let matrix = collect_matrix(&args.device_path);
     let col_count = matrix.iter().map(|x| x.len()).max().unwrap();
 
 
@@ -83,7 +118,7 @@ fn main() {
   "matrix": [
 {}
   ]
-}}"#, device_path, matrix);
+}}"#, args.device_path, matrix);
 
     let layer_document = format!(r#"{{
   "layer_order": [ "base" ],
@@ -93,8 +128,8 @@ fn main() {
 }}"#, matrix);
 
     // Write the two output files.
-    write_to_file(matrix_path, &matrix_document);
-    write_to_file(layer_path, &layer_document);
+    write_to_file(&args.matrix_path, &matrix_document);
+    write_to_file(&args.layer_path, &layer_document);
 }
 
 fn write_to_file(path: &str, content: &str) {
