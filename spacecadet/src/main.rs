@@ -1,24 +1,53 @@
 use std::time;
 use libspacecadet::*;
+use clap::{Arg, App, value_t};
 
-fn get_keypad_matrix() -> KeyMatrix {
-    return vec![
-        vec![Some(SimpleKey::KEY_ESC)],
-        vec![Some(SimpleKey::KEY_TAB)],
-        vec![Some(SimpleKey::KEY_CAPSLOCK)],
-        vec![Some(SimpleKey::KEY_LEFTSHIFT)],
-        vec![Some(SimpleKey::KEY_RIGHTSHIFT)],
-    ]
+struct ParsedArgs {
+    device_path: String,
+    matrix_path: String,
+    layer_path: String,
+    event_hz_rate: u32,
 }
 
-fn base_layer_keys() -> KeyCodeMatrix {
-    let mut ans = KeyCodeMatrix::new((5, 1));
-    ans.codes[0][0] = "KC_CAPSLOCK".parse().unwrap();
-    ans.codes[1][0] = "KC_ESC".parse().unwrap();
-    ans.codes[2][0] = "KC_TAB".parse().unwrap();
-    ans.codes[3][0] = "SPACECADET(WRAP(KC_LEFTSHIFT, KC_9), KC_LEFTSHIFT)".parse().unwrap();
-    ans.codes[4][0] = "SPACECADET(WRAP(KC_RIGHTSHIFT, KC_0), KC_RIGHTSHIFT)".parse().unwrap();
-    ans
+impl ParsedArgs {
+    fn create() -> ParsedArgs {
+        let matches = App::new("Space Cadet Driver")
+            .version("1.0")
+            .arg(Arg::with_name("device")
+                .short("d")
+                .long("device")
+                .value_name("DEV")
+                .required(true)
+                .help("The path of a keyboard device.")
+                .takes_value(true   ))
+            .arg(Arg::with_name("matrix")
+                .short("m")
+                .long("matrix")
+                .value_name("FILE")
+                .required(true)
+                .help("The path to the matrix file.")
+                .takes_value(true))
+            .arg(Arg::with_name("layer")
+                .short("l")
+                .long("layer")
+                .value_name("FILE")
+                .required(true)
+                .help("The path to the layer file.")
+                .takes_value(true))
+            .arg(Arg::with_name("hz-rate")
+                .long("hz-rate")
+                .value_name("U32")
+                .required(false)
+                .help("Frequency rate of the primary event loop.")
+                .takes_value(true))
+            .get_matches();
+        ParsedArgs {
+            device_path: matches.value_of("device").unwrap().to_string(),
+            matrix_path: matches.value_of("matrix").unwrap().to_string(),
+            layer_path: matches.value_of("layer").unwrap().to_string(),
+            event_hz_rate: value_t!(matches, "hz-rate", u32).unwrap_or(200) // 5ms.
+        }
+    }
 }
 
 fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
@@ -40,19 +69,20 @@ fn cyclic_executor<F>(action: &mut F, hz_rate: u32) where F: FnMut() {
 }
 
 fn main() {
-    let input = EvdevKeyboard::open("/dev/input/event4").unwrap();
-    let output = UInputKeyboard::new(None).unwrap();
+    let args = ParsedArgs::create();
 
-    let mut f = KeyboardDriver {
-        input,
-        output,
-        matrix: VirtualKeyboardMatrix::new(get_keypad_matrix(), Some(VirtualKeyboardMatrix::default_hold_duration())),
+    let mut driver = KeyboardDriver {
+        input: EvdevKeyboard::open(&args.device_path).unwrap(),
+        output: UInputKeyboard::new(None).unwrap(),
+        matrix: VirtualKeyboardMatrix::load(&args.matrix_path),
         layered_codes: Vec::new(),
         layer_attributes: LayerCollection::new(),
     };
 
-    f.add_layer(LayerAttributes { name: "base".to_string(), enabled: true }, base_layer_keys());
+    driver.load_layers(&args.layer_path);
 
-    let mut update = || f.clock_tick(time::Instant::now());
-    cyclic_executor(&mut update, 200);
+    driver.verify().unwrap();
+
+    let mut update = || driver.clock_tick(time::Instant::now());
+    cyclic_executor(&mut update, args.event_hz_rate);
 }
