@@ -122,9 +122,12 @@ fn main() {
 
     let layer_document = format!(r#"{{
   "layer_order": [ "base" ],
-  "base": [
+  "base": {{
+    "enabled": true,
+    "keys" : [
 {}
-  ]
+    ]
+  }}
 }}"#, matrix);
 
     // Write the two output files.
