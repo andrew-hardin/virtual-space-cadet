@@ -1,9 +1,12 @@
+use json;
+use std::fs::File;
+use std::io::Read;
+use std::time::{Instant};
 use crate::input_keyboard::*;
 use crate::output_keyboard::*;
 use crate::virtual_keyboard_matrix::*;
 use crate::layer::*;
 use crate::keys::*;
-use std::time::{Instant};
 
 /// A driver that includes in/out devices, a matrix, and key layers.
 pub struct KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
@@ -134,6 +137,44 @@ impl<I, O> KeyboardDriver<I, O> where I: InputKeyboard, O: OutputKeyboard {
                     Ok(())
                 }
             }
+        }
+    }
+
+    pub fn load_layers(&mut self, path: &str) {
+        // Load a json document.
+        let document = {
+            let mut file = File::open(path).unwrap();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).unwrap();
+            json::parse(&contents).unwrap()
+        };
+
+        // Loop through every layer, populate the attributes and init
+        // the key matrix.
+        for l in document["layer_order"].members() {
+
+            // Load the layer attributes.
+            let name = l.as_str().unwrap();
+            let layer = &document[name];
+            self.layer_attributes.add(LayerAttributes {
+                name: name.to_string(),
+                enabled: layer["enabled"].as_bool().unwrap(),
+            });
+
+            // Load the key matrix for the layer.
+            let matrix = {
+                let mut ans = KeyCodeMatrix::new((0, 0));
+                for row in layer["keys"].members() {
+                    ans.codes.push(Vec::new());
+                    for col in row.members() {
+                        let code: Box<KeyCode> = str::parse(col.as_str().unwrap()).unwrap();
+                        ans.codes.last_mut().unwrap().push(code);
+                    }
+                }
+                ans
+            };
+            self.layered_codes.push(matrix)
+
         }
     }
 }

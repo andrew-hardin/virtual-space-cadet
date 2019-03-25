@@ -1,7 +1,11 @@
 use evdev_rs as evdev;
+use json;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use std::fs::File;
+use std::io::Read;
 use crate::keys;
+use crate::parser::ParsedKeyTree;
 
 
 /// A MxN matrix of key codes. None can be used to encode matrix
@@ -166,6 +170,46 @@ impl VirtualKeyboardMatrix {
         }
     }
 
+    /// Load a keyboard matrix from a file.
+    pub fn load(path: &str) -> VirtualKeyboardMatrix {
+
+        // Read the file to a string.
+        let mut file = File::open(path).unwrap();
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap();
+
+        // Deserialize and print Rust data structure.
+        let data = json::parse(&contents).unwrap();
+
+        let mut mat = KeyMatrix::new();
+        for rows in data["matrix"].members() {
+            mat.push(Vec::new());
+            for col in rows.members() {
+                let key_code = col.as_str().unwrap();
+                let tokenized = ParsedKeyTree::create(key_code).unwrap();
+
+                // Try to parse it as a NormalKey.
+                // If that fails, try a transparent key.
+                // If both options fail then error.
+                let as_normal = keys::NormalKey::from_tokens(&tokenized);
+                let as_transparent = keys::TransparentKey::from_tokens(&tokenized);
+                let code =
+                    if as_normal.is_ok() {
+                        Some(as_normal.unwrap().value)
+                    } else if as_transparent.is_ok() {
+                        None
+                    } else {
+                        panic!(format!("Couldn't convert {} into a code.", key_code));
+                    };
+
+                mat.last_mut().unwrap().push(code);
+            }
+        }
+
+        VirtualKeyboardMatrix::new(mat, None)
+    }
+
+    /// Get the default duration that a key must be held to generate a HOLD event.
     pub fn default_hold_duration() -> Duration { Duration::from_millis(200) }
 
     /// Get the dimensions of the matrix.

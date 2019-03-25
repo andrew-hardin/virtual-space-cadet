@@ -60,6 +60,7 @@ pub trait KeyCode {
 }
 
 
+// The FromStr trait lets str::parse() be used to create a key code.
 impl FromStr for Box<KeyCode> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
