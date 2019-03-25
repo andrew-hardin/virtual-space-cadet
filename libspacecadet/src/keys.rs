@@ -70,7 +70,7 @@ impl FromStr for Box<KeyCode> {
 }
 
 
-/// A key that's transparent; a pass-through to the key below it in the layer hierarchy.
+/// A key that's transparent; a pass-through to the key below it in the layer stack.
 pub struct TransparentKey {}
 impl TransparentKey {
     pub fn from_tokens(item: &ParsedKeyTree) -> Result<TransparentKey, String> {
