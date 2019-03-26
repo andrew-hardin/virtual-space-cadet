@@ -142,7 +142,7 @@ fn write_to_file(path: &str, content: &str) {
 
 fn collect_matrix(name: &str) -> Vec<Vec<evdev::enums::EV_KEY>> {
     let f = std::fs::File::open(name).unwrap();
-    let mut device = evdev::Device::new_from_fd(&f).unwrap();
+    let mut device = evdev::Device::new_from_fd(f).unwrap();
     device.grab(evdev::GrabMode::Grab).unwrap();
     println!("Grabbed exclusive access to \"{}\"; begin pressing keys...", name);
 
@@ -152,7 +152,7 @@ fn collect_matrix(name: &str) -> Vec<Vec<evdev::enums::EV_KEY>> {
     let mut last_key_press_count = 0;
     loop {
         // Read the next key, and ignore any events that aren't presses.
-        let key = device.next_event(evdev_rs::NORMAL | evdev_rs::BLOCKING).unwrap().1;
+        let key = device.next_event(evdev_rs::ReadFlag::NORMAL | evdev_rs::ReadFlag::BLOCKING).unwrap().1;
         if key.value != 1 {
             continue;
         }

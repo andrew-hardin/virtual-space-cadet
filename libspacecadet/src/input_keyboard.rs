@@ -11,7 +11,6 @@ pub trait InputKeyboard {
 
 /// A wrapper around an input keyboard device (e.g. `/dev/input/event4`).
 pub struct EvdevKeyboard {
-    _file_descriptor: std::fs::File,
     device: evdev::Device,
     stats: KeyStats
 }
@@ -29,14 +28,13 @@ impl EvdevKeyboard {
 
         match file_descriptor {
             Ok(fd) => {
-                let mut device = evdev::Device::new_from_fd(&fd).unwrap();
+                let mut device = evdev::Device::new_from_fd(fd).unwrap();
 
                 // Check that the device supports keys.
                 if device.has(&evdev::enums::EventType::EV_KEY) {
                     device.grab(evdev::GrabMode::Grab).unwrap();
 
                     Ok(EvdevKeyboard {
-                        _file_descriptor: fd,
                         device,
                         stats: KeyStats::new(),
                     })
@@ -59,7 +57,7 @@ impl InputKeyboard for EvdevKeyboard {
     fn read_events(&mut self) -> Vec<evdev::InputEvent> {
         let mut ans= Vec::new();
         loop {
-            match self.device.next_event(evdev::NORMAL) {
+            match self.device.next_event(evdev::ReadFlag::NORMAL) {
                 Ok(k) => {
                     match k.0 {
                         evdev::ReadStatus::Success => {

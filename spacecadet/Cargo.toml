@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 libspacecadet = {path = "../libspacecadet"}
-evdev-rs = {path = "/home/andrew/Desktop/evdev-rs"}
+evdev-rs = "0.2.0"
 clap = "~2.32"
 
 [[bin]]
