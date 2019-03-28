@@ -38,7 +38,7 @@ codes:
 
 - [qmk/qmk_firmware](https://github.com/qmk/qmk_firmware)
 
-
+------------
 <sup>1</sup>
 We trust keyboards running black-box firmware that was flashed onto
 the device in China, but only if the keyboard has
