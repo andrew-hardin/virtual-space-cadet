@@ -7,7 +7,7 @@ space - there's no need to modify the kernel. It intercepts events
 from an input device, interprets them, and emulates a new virtual
 keyboard device:
 
-**I need more pictures**
+![Overview](doc/img/outline.svg)
 
 Why does this exist?
 --------------------
