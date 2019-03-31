@@ -12,7 +12,7 @@ keyboard device:
 Why does this exist?
 --------------------
 The keyboard is my primary interface when working on a computer, but
-traditional keyboard drivers are painfully simple. I was overjoyed to
+traditional keyboard drivers are painfully limited. I was overjoyed to
 discover the _flexibility_ that came with running QMK firmware on my
 Kinesis Advantage.
 
@@ -28,15 +28,12 @@ capabilities should be available without needing to tweak the kernel.
 
 Inspiration
 -----------
-This project showed me that it was possible to emulate a keyboard
+- The [spacefn-evdev](https://github.com/abrasive/spacefn-evdev)
+project showed me that it was possible to emulate a keyboard
 layout in user space via `evdev` and `uinput`:
 
-- [abrasive/spacefn-evdev](https://github.com/abrasive/spacefn-evdev)
-
-The QMK project provided inspiration for layers and advanced key
-codes:
-
-- [qmk/qmk_firmware](https://github.com/qmk/qmk_firmware)
+- The [QMK](https://github.com/qmk/qmk_firmware)
+project provided inspiration for layers and advanced key codes.
 
 ------------
 <sup>1</sup>
