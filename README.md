@@ -1,4 +1,4 @@
-Virtual Space-Cadet
+Virtual Space Cadet
 ===================
 
 This is a virtual keyboard device that supports layers and advanced
