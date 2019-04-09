@@ -78,7 +78,7 @@ impl TransparentKey {
             Err("Transparent keys don't have arguments".to_string())
         } else if item.identifier.chars().all(|x| x == '_') {
             Ok(TransparentKey{})
-        } else if item.identifier == "KC_TRANS" {
+        } else if item.identifier == "TRANSPARENT" {
             Ok(TransparentKey{})
         } else {
             Err("Not a transparent key.".to_string())
@@ -97,7 +97,7 @@ impl OpaqueKey {
             Err("Opaque keys don't have arguments".to_string())
         } else if item.identifier.chars().all(|x| x == 'X') {
             Ok(OpaqueKey{})
-        } else if item.identifier == "KC_OPAQUE" {
+        } else if item.identifier == "OPAQUE" {
             Ok(OpaqueKey{})
         } else {
             Err("Not an opaque key.".to_string())
