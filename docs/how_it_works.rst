@@ -64,5 +64,6 @@ an event to the output device.
 
 In addition to traditional keyboard codes, advanced
 codes such as macros, modifiers, and speed/tap sensitive keys
-can be included in a layer.
+can be included in a layer. The :doc:`key index<keys/index>`
+describes all possible keys.
 
