@@ -5,8 +5,10 @@ Virtual Space Cadet
    :maxdepth: 2
    :hidden:
 
-   how_it_works.rst
+   how_it_works
+   quickstart
    keys/index
+   keyboards/index
 
 This project creates a virtual keyboard device that supports layers and
 advanced key codes (inspired by QMK). The virtual keyboard device runs
