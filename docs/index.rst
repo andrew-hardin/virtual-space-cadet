@@ -32,6 +32,11 @@ obvious lessons:
 A laptop keyboard should be a first-class input device, and advanced
 capabilities should be available without needing to tweak the kernel.
 
+.. WARNING::
+   Treat as a technical proof-of-concept - not something you
+   can rely on for a decade. It meets my needs, although it's very
+   rough around the edges (first time using Rust...).
+
 Inspiration
 -----------
 
