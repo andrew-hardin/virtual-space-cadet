@@ -1,0 +1,9 @@
+{
+  "matrix": [
+    [ "KC_ESC" ],
+    [ "KC_TAB" ],
+    [ "KC_CAPSLOCK" ],
+    [ "KC_LEFTSHIFT" ],
+    [ "KC_RIGHTSHIFT" ]
+  ]
+}

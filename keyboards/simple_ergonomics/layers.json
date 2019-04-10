@@ -1,0 +1,13 @@
+{
+  "layer_order": [ "base" ],
+  "base": {
+    "enabled": true,
+    "keys" : [
+      [ "KC_CAPSLOCK" ],
+      [ "KC_ESC" ],
+      [ "KC_TAB" ],
+      [ "SPACECADET(WRAP(KC_LEFTSHIFT,KC_9),KC_LEFTSHIFT)" ],
+      [ "SPACECADET(WRAP(KC_RIGHTSHIFT,KC_0),KC_RIGHTSHIFT)" ]
+    ]
+  }
+}
