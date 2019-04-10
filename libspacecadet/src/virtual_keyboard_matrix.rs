@@ -142,10 +142,12 @@ impl VirtualKeyboardMatrix {
     pub fn new(keys: KeyMatrix, hold_duration: Option<Duration>) -> VirtualKeyboardMatrix {
 
         // Loop through the event matrix and store a map from event -> index.
-        let dim = (keys.len(), keys[0].len());
+        let row_count = keys.len();
+        let col_count = keys.iter().map(|x| x.len()).max().unwrap_or(0);
+        let dim = (row_count, col_count);
         let mut hash = HashMap::new();
         for r in 0..dim.0 {
-            for c in 0..dim.1 {
+            for c in 0..keys[r].len() {
                 match &keys[r][c] {
                     Some(t) => hash.insert(t.clone(), (r, c)),
                     None => None
