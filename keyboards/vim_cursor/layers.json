@@ -1,0 +1,17 @@
+{
+  "layer_order": [ "base", "cursor" ],
+  "base": {
+    "enabled": true,
+    "keys" : [
+      [ "KC_H", "KC_J", "KC_K", "KC_L" ],
+      [ "LT(cursor,KC_SPACE,150)" ]
+    ]
+  },
+  "cursor": {
+    "enabled": false,
+    "keys": [
+      [ "KC_LEFT", "KC_DOWN", "KC_UP", "KC_RIGHT" ],
+      [ "TRANSPARENT" ]
+    ]
+  }
+}
