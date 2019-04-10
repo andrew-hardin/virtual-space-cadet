@@ -4,19 +4,19 @@ Quickstart
 1. Install the project using Cargo. This will place the
    built binaries in the ``~/.cargo`` directory.
 
-.. code-block:: bash
-    :linenos:
+    .. code-block:: bash
+        :linenos:
 
-    cargo install --git https://github.com/andrew-hardin/virtual-space-cadet.git
+        cargo install --git https://github.com/andrew-hardin/virtual-space-cadet.git
 
 2. Verify the binaries are findable. If this fails, the
    ``~/.cargo`` directory needs to be added to the ``$PATH``.
 
-.. code-block:: bash
-    :linenos:
+    .. code-block:: bash
+        :linenos:
 
-    which spacecadet
-    spacecadet --help
+        which spacecadet
+        spacecadet --help
 
 3. Download the demo matrix and layer files. The matrix file maps
    event codes to matrix locations. The layer file converts matrix
